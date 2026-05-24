@@ -357,8 +357,9 @@
     const v = (Egg.VARIANTS || []).find(x => x.id === pet.variant);
     if(!v) return;
     variantName.textContent = v.name;
-    variantTag.textContent = v.tagline;
-    // build a conic swatch from the variant colors
+    // prefer the longer "origin" paragraph from Story if available
+    const origin = (window.Story && window.Story.ORIGINS && window.Story.ORIGINS[v.id]) || v.tagline;
+    variantTag.textContent = origin;
     const grad = `conic-gradient(${v.colors.concat(v.colors[0]).join(', ')})`;
     variantSwatch.style.setProperty('--swatch', grad);
     variantSwatch.style.background = grad;
@@ -437,6 +438,20 @@
       if(window.Brain.pose() === 'pecking' && Math.random() < 0.18){
         ChickenPet.reactFeed(t);
       }
+    }
+
+    // STORY: surface story-event dreams + tick the Static antagonist
+    if(window.Story){
+      const dream = window.Story.tickDream(pet);
+      if(dream && window.Brain){
+        window.Brain.think(dream, 6500);
+      }
+      window.Story.tickStatic(pet, 0.016);   // approximate per-frame seconds
+    }
+
+    // remember crisis state for the "first-meds" dream trigger
+    if(pet && !pet.egg){
+      if(pet.sanity < 25) pet._wasInCrisis = true;
     }
 
     // periodic thought generation (every ~16s, async)

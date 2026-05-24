@@ -1176,6 +1176,9 @@
     // ---- WORLD (sky/ground/sun/moon/clouds) ----
     if(window.World) window.World.draw(ctx, t, s.w, s.h);
 
+    // ---- The Static (antagonist silhouette in the distance) ----
+    if(window.Story) window.Story.drawStatic(ctx, t, s.w, s.h);
+
     // ---- shop items in the world (behind the chicken) ----
     drawWorldItems(t);
 
