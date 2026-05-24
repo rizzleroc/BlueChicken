@@ -40,7 +40,7 @@
     return {
       isEgg: true,
       eggLaidAt: Date.now(),
-      warmth: 50,          // 0..100 — sweet spot ~70
+      warmth: 72,          // 0..100 — starts warm so you have a window
       turns: 0,            // total times turned
       lastTurnAt: 0,
       taps: 0,             // pokes / disturbances
@@ -75,12 +75,14 @@
   }
 
   // Per-tick update of egg metrics (called from main loop).
-  // dt is seconds since last tick.
+  // dt is seconds since last tick. ambient is the resting target temperature
+  // — bumped by heat-lamp items.
   function tickEgg(egg, dt, ambient){
     if(!egg) return;
-    // warmth drifts toward ambient (default 30 = chilly)
-    const target = ambient ?? 30;
-    egg.warmth += (target - egg.warmth) * Math.min(1, dt * 0.04);
+    // warmth drifts toward ambient. slow drift so manual care is meaningful
+    // but offline pauses still affect it.
+    const target = ambient ?? 42;
+    egg.warmth += (target - egg.warmth) * Math.min(1, dt * 0.02);
     // accumulate cold/hot exposure
     if(egg.warmth < 35) egg.coldSeconds += dt;
     if(egg.warmth > 85) egg.hotSeconds += dt;
@@ -97,12 +99,12 @@
   const actions = {
     warm(egg, amount){
       if(!egg) return;
-      egg.warmth = Math.min(100, egg.warmth + (amount ?? 12));
+      egg.warmth = Math.min(100, egg.warmth + (amount ?? 22));
       egg.attention++;
     },
     cool(egg, amount){
       if(!egg) return;
-      egg.warmth = Math.max(0, egg.warmth - (amount ?? 12));
+      egg.warmth = Math.max(0, egg.warmth - (amount ?? 14));
       egg.attention++;
     },
     turn(egg){

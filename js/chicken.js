@@ -461,6 +461,316 @@
     while(s.poops.length > count) s.poops.pop();
   }
 
+  // ---- world items (heat lamp, bed, henhouse, etc.) ----
+  function drawWorldItems(t){
+    const pet = window.Pet && window.Pet.get();
+    if(!pet || !pet.inventory) return;
+    const groundY = s.h * 0.83;
+    const inv = pet.inventory;
+    // henhouse — far left background
+    if(inv.includes('henhouse')) drawHenhouse(s.w * 0.12, groundY, t);
+    else if(inv.includes('coop')) drawCoop(s.w * 0.12, groundY, t);
+    // fence — across the bottom
+    if(inv.includes('fence')) drawFence(s.w * 0.0, groundY + 10, s.w);
+    // heat lamp — above the egg / chicken area
+    if(inv.includes('lamp')) drawHeatLamp(s.w * 0.5, groundY - 240, t, !!s.isEgg);
+    // disco ball — only after coop or in late game
+    if(inv.includes('disco')) drawDiscoBall(s.w * 0.5, groundY - 280, t);
+    // bed — to the right of chicken area
+    if(inv.includes('bed')) drawBed(s.w * 0.78, groundY - 8);
+    // dish — left of chicken
+    if(inv.includes('dish')) drawWaterDish(s.w * 0.32, groundY - 4);
+    // feeder
+    if(inv.includes('feeder')) drawFeeder(s.w * 0.68, groundY - 4);
+    // perch
+    if(inv.includes('perch')) drawPerch(s.w * 0.86, groundY - 60);
+    // dust bath
+    if(inv.includes('dustbath')) drawDustBath(s.w * 0.2, groundY - 4);
+    // mirror
+    if(inv.includes('mirror')) drawMirror(s.w * 0.72, groundY - 70);
+    // ball
+    if(inv.includes('ball')) drawBall(s.w * 0.62 + Math.sin(t*0.001)*6, groundY - 8);
+    // worm
+    if(inv.includes('worm')) drawWorm(s.w * 0.42 + Math.sin(t*0.003)*10, groundY - 4, t);
+  }
+
+  function drawHeatLamp(x, y, t, isEgg){
+    ctx.save();
+    ctx.translate(x, y);
+    // chain
+    ctx.strokeStyle = 'rgba(160,170,200,.45)';
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, -y); ctx.lineTo(0, 0); ctx.stroke();
+    ctx.setLineDash([]);
+    // lamp hood
+    ctx.fillStyle = '#2c2640';
+    ctx.beginPath();
+    ctx.moveTo(-26, 0); ctx.lineTo(26, 0);
+    ctx.lineTo(18, 22); ctx.lineTo(-18, 22);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.1)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // bulb
+    const pulse = 0.85 + Math.sin(t * 0.004) * 0.15;
+    const g = ctx.createRadialGradient(0, 24, 2, 0, 24, 20);
+    g.addColorStop(0, `rgba(255,255,220,${pulse})`);
+    g.addColorStop(0.5, `rgba(255,180,80,${pulse * 0.8})`);
+    g.addColorStop(1, 'rgba(255,160,60,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 24, 20, 0, Math.PI*2); ctx.fill();
+    // cone of light toward target
+    const target = isEgg ? 220 : 200;
+    const cone = ctx.createLinearGradient(0, 22, 0, target);
+    cone.addColorStop(0, `rgba(255,200,120,${0.55 * pulse})`);
+    cone.addColorStop(1, 'rgba(255,200,120,0)');
+    ctx.fillStyle = cone;
+    ctx.beginPath();
+    ctx.moveTo(-22, 22); ctx.lineTo(-90, target);
+    ctx.lineTo(90, target); ctx.lineTo(22, 22); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCoop(x, y, t){
+    ctx.save();
+    ctx.translate(x, y);
+    // body
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(-50, -56, 100, 56);
+    // roof
+    ctx.fillStyle = '#5c3a1c';
+    ctx.beginPath();
+    ctx.moveTo(-60, -56); ctx.lineTo(0, -88); ctx.lineTo(60, -56);
+    ctx.closePath(); ctx.fill();
+    // door
+    ctx.fillStyle = '#1f1408';
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, Math.PI, 0); ctx.lineTo(18, -1); ctx.lineTo(-18, -1);
+    ctx.closePath(); ctx.fill();
+    // window
+    ctx.fillStyle = '#ffcd3c';
+    ctx.fillRect(-30, -46, 14, 14);
+    ctx.fillStyle = '#0a0710';
+    ctx.fillRect(-29, -45, 6, 12); ctx.fillRect(-23, -45, 6, 12);
+    ctx.restore();
+  }
+
+  function drawHenhouse(x, y, t){
+    ctx.save();
+    ctx.translate(x, y);
+    // larger 2-story
+    ctx.fillStyle = '#a76a32';
+    ctx.fillRect(-72, -86, 144, 86);
+    ctx.fillStyle = '#6b4019';
+    ctx.beginPath();
+    ctx.moveTo(-82, -86); ctx.lineTo(0, -126); ctx.lineTo(82, -86);
+    ctx.closePath(); ctx.fill();
+    // upper window
+    ctx.fillStyle = '#ffcd3c';
+    ctx.fillRect(-12, -100, 24, 14);
+    ctx.fillStyle = '#0a0710';
+    ctx.fillRect(-11, -99, 10, 12); ctx.fillRect(1, -99, 10, 12);
+    // doors
+    ctx.fillStyle = '#3a230f';
+    ctx.fillRect(-44, -56, 26, 56);
+    ctx.fillRect(18, -56, 26, 56);
+    // hen on the roof, tiny
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(28, -100, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ff3c5c';
+    ctx.fillRect(30, -103, 3, 3);
+    ctx.restore();
+  }
+
+  function drawFence(x, y, w){
+    ctx.save();
+    ctx.translate(x, y);
+    const post = 6, gap = 18, h = 30;
+    ctx.fillStyle = '#cdb593';
+    for(let i = 0; i < w; i += gap){
+      ctx.beginPath();
+      ctx.moveTo(i, -h);
+      ctx.lineTo(i + post, -h);
+      ctx.lineTo(i + post + 2, -h + 6);
+      ctx.lineTo(i + post + 2, 0);
+      ctx.lineTo(i - 2, 0);
+      ctx.lineTo(i - 2, -h + 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // rails
+    ctx.fillStyle = '#b59770';
+    ctx.fillRect(0, -22, w, 3);
+    ctx.fillRect(0, -12, w, 3);
+    ctx.restore();
+  }
+
+  function drawBed(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    // straw pile, soft oval
+    const g = ctx.createRadialGradient(-10, -8, 4, 0, 0, 40);
+    g.addColorStop(0, '#fff1c0');
+    g.addColorStop(0.6, '#d5b264');
+    g.addColorStop(1, '#7a5a26');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 38, 18, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,40,20,.5)';
+    ctx.lineWidth = 0.8;
+    for(let i = -7; i <= 7; i++){
+      ctx.beginPath();
+      ctx.moveTo(i*5, -8 + Math.abs(i)*0.5);
+      ctx.lineTo(i*5 + 2, 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawWaterDish(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#3a3458';
+    ctx.beginPath(); ctx.ellipse(0, 4, 18, 5, 0, 0, Math.PI*2); ctx.fill();
+    const g = ctx.createLinearGradient(0, -4, 0, 4);
+    g.addColorStop(0, '#7fbfff');
+    g.addColorStop(1, '#3c6ea0');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(0, 0, 16, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.beginPath(); ctx.ellipse(-4, -1, 3, 0.6, 0.3, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawFeeder(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    // metal tray
+    ctx.fillStyle = '#9aa6c4';
+    ctx.fillRect(-22, -6, 44, 6);
+    ctx.fillStyle = '#5c5478';
+    ctx.fillRect(-22, 0, 44, 4);
+    // grain piles
+    ctx.fillStyle = '#ffcd3c';
+    for(let i = -3; i <= 3; i++){
+      ctx.beginPath();
+      ctx.arc(i*6, -6, 1.6, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawPerch(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    // vertical posts
+    ctx.fillStyle = '#7a5a26';
+    ctx.fillRect(-2, 0, 4, 60);
+    ctx.fillRect(-36, 0, 4, 60);
+    // horizontal bar
+    ctx.fillStyle = '#d5b264';
+    ctx.fillRect(-40, -4, 44, 6);
+    ctx.restore();
+  }
+
+  function drawDustBath(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#3a3458';
+    ctx.beginPath(); ctx.ellipse(0, 6, 22, 5, 0, 0, Math.PI*2); ctx.fill();
+    // dust
+    ctx.fillStyle = '#a89570';
+    ctx.beginPath(); ctx.ellipse(0, 2, 20, 5, 0, 0, Math.PI*2); ctx.fill();
+    // puffs
+    ctx.fillStyle = 'rgba(168,149,112,.4)';
+    ctx.beginPath(); ctx.arc(-8, -2, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, -4, 5, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMirror(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#3a3458';
+    ctx.fillRect(-2, -10, 4, 70);
+    ctx.fillStyle = '#cdb593';
+    ctx.fillRect(-18, -10, 36, 26);
+    const g = ctx.createLinearGradient(-14, -8, 14, 14);
+    g.addColorStop(0, '#e8e8ff');
+    g.addColorStop(1, '#9f9fb8');
+    ctx.fillStyle = g;
+    ctx.fillRect(-14, -8, 28, 22);
+    ctx.restore();
+  }
+
+  function drawBall(x, y){
+    ctx.save();
+    ctx.translate(x, y);
+    const g = ctx.createRadialGradient(-3, -3, 1, 0, 0, 10);
+    g.addColorStop(0, '#ffd1e3');
+    g.addColorStop(1, '#ff5dd6');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.3)';
+    ctx.lineWidth = 0.6;
+    for(let i = 0; i < 6; i++){
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(i)*9, Math.sin(i)*9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawWorm(x, y, t){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = '#ff9be3';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for(let i = -12; i <= 12; i += 2){
+      const yy = Math.sin(i * 0.4 + t * 0.005) * 3;
+      if(i === -12) ctx.moveTo(i, yy);
+      else ctx.lineTo(i, yy);
+    }
+    ctx.stroke();
+    // eye
+    ctx.fillStyle = '#0a0710';
+    ctx.beginPath(); ctx.arc(12, Math.sin(12*0.4 + t*0.005)*3 - 1, 1.2, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawDiscoBall(x, y, t){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = 'rgba(160,170,200,.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, -y); ctx.lineTo(0, -16); ctx.stroke();
+    // ball
+    const r = 14;
+    const g = ctx.createRadialGradient(-4, -6, 2, 0, 0, r);
+    g.addColorStop(0, '#fff');
+    g.addColorStop(1, '#aab2d3');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
+    // facets
+    ctx.strokeStyle = 'rgba(0,0,0,.3)';
+    ctx.lineWidth = 0.5;
+    for(let i = 0; i < 6; i++){
+      ctx.beginPath(); ctx.arc(0, 0, r - i*2, 0, Math.PI*2); ctx.stroke();
+    }
+    // sparkles
+    for(let i = 0; i < 4; i++){
+      const a = i * 1.6 + t * 0.005;
+      ctx.fillStyle = `hsl(${(t*0.4 + i*60) % 360}, 100%, 70%)`;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * 30, Math.sin(a) * 30, 2, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawLaidEgg(e){
     ctx.save();
     ctx.translate(e.x, e.y);
@@ -694,6 +1004,9 @@
 
     // ---- WORLD (sky/ground/sun/moon/clouds) ----
     if(window.World) window.World.draw(ctx, t, s.w, s.h);
+
+    // ---- shop items in the world (behind the chicken) ----
+    drawWorldItems(t);
 
     // pet position
     s.cx = s.w * 0.5;

@@ -201,6 +201,94 @@
     hatchModal.setAttribute('aria-hidden', 'true');
   });
 
+  // ---- SHOP ----
+  const shopModal = $('#shop');
+  const shopBody  = $('#shopBody');
+  const shopBtn   = $('#shopBtn');
+  const shopClose = $('#shopClose');
+  shopBtn.addEventListener('click', () => openShop());
+  shopClose.addEventListener('click', () => closeShop());
+  shopModal.addEventListener('click', (e) => {
+    if(e.target === shopModal) closeShop();
+  });
+
+  function openShop(){
+    const pet = Pet.get();
+    if(!pet || !window.Shop) return;
+    renderShop(pet);
+    shopModal.classList.remove('hidden');
+    shopModal.setAttribute('aria-hidden', 'false');
+  }
+  function closeShop(){
+    shopModal.classList.add('hidden');
+    shopModal.setAttribute('aria-hidden', 'true');
+  }
+
+  function renderShop(pet){
+    $('#shopCoins').textContent = Math.floor(pet.coins || 0);
+    const cats = window.Shop.categories();
+    const html = cats.map(cat => {
+      const items = window.Shop.CATALOG.filter(it => it.category === cat.id);
+      return `<section class="shop-category">
+        <h3 class="shop-category-name">${cat.name}</h3>
+        <div class="shop-grid">
+          ${items.map(item => renderItem(pet, item)).join('')}
+        </div>
+      </section>`;
+    }).join('');
+    shopBody.innerHTML = html;
+    // wire item clicks
+    shopBody.querySelectorAll('.shop-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.getAttribute('data-id');
+        if(window.Shop.buy(Pet.get(), id)){
+          showFloat('purchased: ' + window.Shop.get(id).name.toLowerCase());
+          renderShop(Pet.get());
+        }
+      });
+    });
+  }
+
+  function renderItem(pet, item){
+    const owned = window.Shop.ownsItem(pet, item.id);
+    const unlocked = item.unlock(pet);
+    const canBuy = window.Shop.canBuy(pet, item.id);
+    let cls = 'shop-item';
+    if(owned) cls += ' owned';
+    else if(!unlocked) cls += ' locked';
+    else if(!canBuy) cls += ' cantafford';
+    const status = owned ? 'OWNED' : `◎ ${item.price}`;
+    const locked = !owned && !unlocked
+      ? `<div class="shop-item-locked-msg">${unlockHint(item)}</div>` : '';
+    return `<div class="${cls}" data-id="${item.id}">
+      <div class="shop-item-head">
+        <span class="shop-item-glyph">${item.glyph}</span>
+        <span class="shop-item-price">${status}</span>
+      </div>
+      <div class="shop-item-name">${item.name}</div>
+      <div class="shop-item-desc">${item.description}</div>
+      ${locked}
+    </div>`;
+  }
+
+  function unlockHint(item){
+    // Lightweight hints: tell the player what gates the unlock.
+    const map = {
+      bed:       'unlocks at bond 3',
+      perch:     'unlocks at bond 10',
+      dustbath:  'unlocks after playing 3+ times',
+      ball:      'unlocks after playing 1+ time',
+      mirror:    'unlocks at bond 15',
+      worm:      'unlocks after playing 6+ times',
+      coop:      'unlocks after laying 1+ eggs',
+      henhouse:  'unlocks after laying 3+ eggs',
+      fence:     'unlocks at age 4m',
+      disco:     'unlocks at bond 50',
+      therapist: 'unlocks in crisis',
+    };
+    return map[item.id] || 'locked';
+  }
+
   function showRip(){
     const pet = Pet.get();
     if(!pet || !pet.isDead) return;
@@ -329,6 +417,7 @@
     $('#petStage').textContent = pet.egg ? 'EGG' : Pet.stage();
     $('#petAge').textContent = formatAge(Pet.ageSeconds());
     $('#petVibe').textContent = pet.egg ? Pet.eggVibe() : Pet.vibe();
+    $('#coinCount').textContent = Math.floor(pet.coins || 0);
 
     if(pet.egg){
       setBar('warmth', pet.egg.warmth);

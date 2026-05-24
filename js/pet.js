@@ -48,12 +48,16 @@
       eggsLaid: 0,
       timesFed: 0,
       timesPlayed: 0,
-      version: 2,
+      version: 3,
       // egg phase
       egg: window.Egg ? window.Egg.fresh() : null,
-      variant: null,         // assigned at hatch
+      variant: null,
       variantName: null,
       variantTagline: null,
+      // shop / progression
+      coins: 15,            // starter so you can buy a lamp right away
+      inventory: [],
+      lastCoinTickAt: Date.now(),
     };
   }
 
@@ -82,31 +86,59 @@
     pet.lastTick = now;
     if(dt < 0.01) return;
 
+    // collect shop effects (heat lamp / feeder / bed / etc.)
+    const eff = window.Shop ? window.Shop.effects(pet) : {};
+
     // ----- EGG PHASE -----
     if(pet.egg){
-      // ambient is colder at night
       const tod = window.World ? window.World.timeOfDay() : 0.5;
       const isNight = tod < 0.22 || tod > 0.82;
-      const ambient = isNight ? 20 : 30;
+      let ambient = isNight ? 32 : 42;
+      ambient += (eff.ambientBoost || 0);    // heat lamp adds to ambient
+      // heat lamp also adds a tiny direct warmth trickle
+      if(eff.eggWarmth && pet.egg){
+        pet.egg.warmth = Math.min(100, pet.egg.warmth + eff.eggWarmth * dt * 0.02);
+      }
       window.Egg && window.Egg.tick(pet.egg, dt, ambient);
 
       if(pet.egg.hatchProgress >= 100){
         hatch();
       }
-      // egg phase doesn't decay other stats
       return;
     }
 
     const hours = dt / 3600;
-    // sleeping recovers energy + slower decay
     const sleepMult = pet.isSleeping ? 0.4 : 1.0;
-    pet.hunger      = clamp(pet.hunger      - DECAY_PER_HOUR.hunger * hours * sleepMult);
-    pet.cleanliness = clamp(pet.cleanliness - DECAY_PER_HOUR.cleanliness * hours);
-    pet.happiness   = clamp(pet.happiness   - DECAY_PER_HOUR.happiness * hours * sleepMult);
+    const hungerMult = (eff.hungerDecayMult ?? 1);
+    const cleanMult  = (eff.cleanlinessDecayMult ?? 1);
+    const happyMult  = (eff.happinessDecayMult ?? 1);
+    const sleepEnergyMult = (eff.sleepEnergyMult ?? 1);
+    pet.hunger      = clamp(pet.hunger      - DECAY_PER_HOUR.hunger * hours * sleepMult * hungerMult);
+    pet.cleanliness = clamp(pet.cleanliness - DECAY_PER_HOUR.cleanliness * hours * cleanMult);
+    pet.happiness   = clamp(pet.happiness   - DECAY_PER_HOUR.happiness * hours * sleepMult * happyMult);
     if(pet.isSleeping){
-      pet.energy = clamp(pet.energy + 40 * hours);
+      pet.energy = clamp(pet.energy + 40 * hours * sleepEnergyMult);
     } else {
       pet.energy = clamp(pet.energy - DECAY_PER_HOUR.energy * hours);
+    }
+    // apply floors
+    if(eff.happinessFloor) pet.happiness = Math.max(pet.happiness, eff.happinessFloor);
+    if(eff.sanityFloor)    pet.sanity    = Math.max(pet.sanity,    eff.sanityFloor);
+    // perch grants slow sanity recovery while sitting/sleeping
+    if(eff.restSanityPerSec && pet.isSleeping){
+      pet.sanity = clamp(pet.sanity + eff.restSanityPerSec * dt);
+    }
+    // mirror grants slow bond
+    if(eff.bondPerMinute){
+      pet.bond = clamp(pet.bond + eff.bondPerMinute * dt / 60);
+    }
+    // passive coins (1 per minute of being a chicken, with a small variant kicker)
+    if(!pet.lastCoinTickAt) pet.lastCoinTickAt = now;
+    const coinDt = (now - pet.lastCoinTickAt) / 1000;
+    if(coinDt >= 60){
+      const earned = Math.floor(coinDt / 60);
+      pet.coins = (pet.coins || 0) + earned;
+      pet.lastCoinTickAt = now - (coinDt - earned * 60) * 1000;
     }
 
     // sanity decays IF needs are unmet
@@ -115,12 +147,15 @@
       Math.max(0, 40 - pet.energy) +
       Math.max(0, 40 - pet.cleanliness) +
       Math.max(0, 40 - pet.happiness)
-    ) / 40;       // 0..4-ish
+    ) / 40;
     if(needPressure > 0.05){
       pet.sanity = clamp(pet.sanity - needPressure * 6 * hours);
     } else {
-      // recover sanity slowly when content
-      pet.sanity = clamp(pet.sanity + 4 * hours);
+      // night-time bonus if coop owned
+      const tod = window.World ? window.World.timeOfDay() : 0.5;
+      const isNight = tod < 0.22 || tod > 0.82;
+      const nightMult = isNight ? (eff.nightSanityMult ?? 1) : 1;
+      pet.sanity = clamp(pet.sanity + 4 * hours * nightMult);
     }
 
     // chance of pooping each in-game hour
@@ -129,10 +164,12 @@
       pet.cleanliness = clamp(pet.cleanliness - 8);
     }
 
-    // chance of laying an egg if happy
-    if(!pet.isSleeping && pet.happiness > 70 && pet.hunger > 50 && Math.random() < hours * 0.4){
+    // chance of laying an egg if happy (henhouse multiplier)
+    const layMult = eff.eggLayChanceMult ?? 1;
+    if(!pet.isSleeping && pet.happiness > 70 && pet.hunger > 50 && Math.random() < hours * 0.4 * layMult){
       pet.eggsLaid++;
-      pet.onLayEgg = true;     // transient flag for UI
+      pet.coins = (pet.coins || 0) + 5;
+      pet.onLayEgg = true;
     }
 
     // death conditions: starvation or insanity below 0 for too long
@@ -157,6 +194,7 @@
     pet.egg = null;
     // tiny variant-driven stat bumps
     pet.sanity = clamp(100 + variant.sanityBoost);
+    pet.coins = (pet.coins || 0) + 10;     // hatch bonus
     save();
   }
 
@@ -190,12 +228,16 @@
   }
 
   // ----- actions ---------------------------------------------------------
+  function awardCoin(source){
+    if(window.Shop) window.Shop.awardCoins(pet, source);
+  }
   function feed(){
     if(!pet || pet.isDead || pet.isSleeping) return false;
     pet.hunger = clamp(pet.hunger + 35);
     pet.happiness = clamp(pet.happiness + 5);
     pet.timesFed++;
     pet.onFeed = true;
+    awardCoin('feed');
     save();
     return true;
   }
@@ -206,6 +248,7 @@
     pet.bond = clamp(pet.bond + 3);
     pet.timesPlayed++;
     pet.onPlay = true;
+    awardCoin('play');
     save();
     return true;
   }
@@ -215,6 +258,7 @@
     pet.bond = clamp(pet.bond + 2);
     pet.sanity = clamp(pet.sanity + 4);
     pet.onPet = true;
+    awardCoin('pet');
     save();
     return true;
   }
@@ -223,6 +267,7 @@
     pet.poops = 0;
     pet.cleanliness = clamp(pet.cleanliness + 40);
     pet.happiness = clamp(pet.happiness + 3);
+    awardCoin('clean');
     save();
     return true;
   }
@@ -253,12 +298,24 @@
       pet = freshPet(name);
       save();
     } else {
-      // migrate old saves (pre-egg) to the new format
-      if(!pet.version || pet.version < 2){
-        // user had a pre-egg chicken — convert it back to an egg so they
-        // get to experience the hatch flow
+      // migrate old saves to the new format
+      if(!pet.version || pet.version < 3){
+        // earlier-version pets: bring forward bond/eggs/age but reset
+        // anything missing. If they had no egg AND no variant, treat as
+        // pre-egg user and give them a fresh egg with their old name.
         const oldName = pet.name;
+        const carryBond = pet.bond || 0;
+        const carryEggs = pet.eggsLaid || 0;
+        const carryFeeds = pet.timesFed || 0;
+        const wasUnhatched = !pet.variant && !pet.egg;
         pet = freshPet(oldName);
+        if(!wasUnhatched){
+          // they had a chicken; preserve some progress + give them coins
+          pet.bond = carryBond;
+          pet.eggsLaid = carryEggs;
+          pet.timesFed = carryFeeds;
+          pet.coins = 25;
+        }
         save();
       } else {
         // catch up on offline decay

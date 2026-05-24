@@ -87,6 +87,11 @@
         <span class="vibe" id="petVibe">CLUCK is fine.</span>
       </div>
       <div class="top-right">
+        <span class="coin-balance" aria-label="Cluck coins">
+          <span class="coin-icon" aria-hidden="true">◎</span>
+          <b id="coinCount">0</b>
+        </span>
+        <button id="shopBtn" class="ghost" type="button" aria-label="Open store">STORE</button>
         <button id="muteBtn" class="ghost" type="button" aria-label="Mute audio">SOUND: OFF</button>
         <button id="menuBtn" class="ghost" type="button" aria-label="Menu">⋯</button>
       </div>
@@ -223,6 +228,26 @@
     <div class="float-msg" id="floatMsg" aria-live="polite"></div>
   </main>
 
+  <!-- ===================== SHOP MODAL ===================== -->
+  <div id="shop" class="modal hidden" aria-hidden="true">
+    <div class="shop-card">
+      <header class="shop-head">
+        <div>
+          <p class="kicker">cluck store</p>
+          <h2>Things for your chicken</h2>
+        </div>
+        <div class="shop-head-right">
+          <span class="coin-balance">
+            <span class="coin-icon" aria-hidden="true">◎</span>
+            <b id="shopCoins">0</b>
+          </span>
+          <button id="shopClose" class="ghost" type="button">CLOSE</button>
+        </div>
+      </header>
+      <div id="shopBody" class="shop-body"></div>
+    </div>
+  </div>
+
   <!-- shaders -->
   <script type="x-shader/x-vertex" id="vs">
     attribute vec2 a_position;
@@ -307,6 +332,7 @@
   <script src="js/shader.js"></script>
   <script src="js/world.js"></script>
   <script src="js/egg.js"></script>
+  <script src="js/shop.js"></script>
   <script src="js/pet.js"></script>
   <script src="js/brain.js"></script>
   <script src="js/llm.js"></script>
