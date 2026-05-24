@@ -30,9 +30,7 @@
   const eggActions  = $('#eggActions');
   const chickenActions = $('#chickenActions');
 
-  const state = {
-    paintedHatch: false,
-  };
+  const state = {};
 
   // ---- bootstrap ----
   Pet.init();   // loads from localStorage, applies offline decay
@@ -80,6 +78,17 @@
     chickenActions.hidden = isEgg;
     ChickenPet.setEgg(pet.egg);
     ChickenPet.setVariant(variantFromPet(pet));
+  }
+
+  // Defensive: returns true if the visible UI matches the pet's actual phase.
+  // We call this every frame to self-heal any mismatch (e.g. on re-hatch
+  // after death, on migration, on accidental state desync).
+  function uiMatchesPhase(){
+    const pet = Pet.get();
+    if(!pet) return true;
+    const isEgg = !!pet.egg;
+    return isEgg ? !eggActions.hidden && chickenActions.hidden
+                 : eggActions.hidden && !chickenActions.hidden;
   }
 
   function variantFromPet(pet){
@@ -336,14 +345,15 @@
     const pet = Pet.get();
     if(!pet){ return; }
 
-    // detect hatch transition
-    if(pet.onHatch && !state.paintedHatch){
-      state.paintedHatch = true;
-      // sync UI panels to chicken phase
+    // detect hatch transition — show the ceremony modal once per hatch event
+    if(pet.onHatch){
       syncPhaseUI();
       showHatch();
       pet.onHatch = false;
     }
+
+    // defensive: if the visible UI doesn't match the actual pet phase, fix it
+    if(!uiMatchesPhase()) syncPhaseUI();
 
     // ---- world: time of day cycles every ~6 minutes (compressed) ----
     // ALSO match real-world day/night roughly by mixing in clock hour
