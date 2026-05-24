@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0710" />
+  <title>CLUCKBOT — a robot chicken that lives in your browser</title>
+  <meta name="description" content="A persistent robot-chicken Tamagotchi. Care for it, or it goes feral." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <canvas id="bg" aria-hidden="true"></canvas>
+  <canvas id="fg" aria-hidden="true"></canvas>
+  <div id="grain" aria-hidden="true"></div>
+
+  <!-- ===================== NAMING DIALOG (first visit) ===================== -->
+  <div id="naming" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <p class="kicker">cluckbot · 2026</p>
+      <h1>You have been given<br/>an <em>egg.</em></h1>
+      <p class="lede">Keep it warm. Turn it. Pay attention.<br/>Whatever hatches will depend on how you cared for it.</p>
+      <form id="nameForm" autocomplete="off">
+        <label for="nameInput" class="form-label">name the egg</label>
+        <input id="nameInput" type="text" maxlength="12" placeholder="EGG" required />
+        <button class="cta" type="submit">
+          <span class="cta-label">Receive your egg
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </button>
+      </form>
+      <p class="modal-hint">real time runs even when this tab is closed.<br/>your egg gets cold at night. don't forget it.</p>
+    </div>
+  </div>
+
+  <!-- ===================== HATCH CEREMONY ===================== -->
+  <div id="hatch" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <p class="kicker">it hatched</p>
+      <h1 id="variantName">COSMIC</h1>
+      <p class="variant-tag" id="variantTag">born from perfect balance.</p>
+      <div class="variant-swatch" id="variantSwatch" aria-hidden="true"></div>
+      <button id="hatchContinue" class="cta" type="button">
+        <span class="cta-label">Meet your chicken</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================== DEATH / RIP DIALOG ===================== -->
+  <div id="rip" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <p class="kicker">in memoriam</p>
+      <h1 id="ripName">CLUCK</h1>
+      <p class="lede"><span id="ripStage">adult</span> · lived <span id="ripAge">3 minutes</span></p>
+      <p class="rip-cause">cause of death: <span id="ripCause">starvation</span></p>
+      <p class="rip-stats">
+        <span><b id="ripFeeds">0</b> meals</span> ·
+        <span><b id="ripPlays">0</b> games</span> ·
+        <span><b id="ripEggs">0</b> eggs</span>
+      </p>
+      <button id="ripReset" class="cta" type="button">
+        <span class="cta-label">Hatch a new one</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================== MAIN STAGE ===================== -->
+  <main id="stage" class="stage hidden" aria-hidden="true">
+
+    <!-- top bar: name, age, vibe -->
+    <header class="topbar">
+      <div class="top-left">
+        <h2 class="pet-name" id="petName">CLUCK</h2>
+        <span class="pet-meta">
+          <span class="pet-stage" id="petStage">chick</span>
+          <span class="pet-age"   id="petAge">0s</span>
+        </span>
+      </div>
+      <div class="top-center">
+        <span class="vibe" id="petVibe">CLUCK is fine.</span>
+      </div>
+      <div class="top-right">
+        <span class="coin-balance" aria-label="Cluck coins">
+          <span class="coin-icon" aria-hidden="true">◎</span>
+          <b id="coinCount">0</b>
+        </span>
+        <button id="shopBtn" class="ghost" type="button" aria-label="Open store">STORE</button>
+        <button id="muteBtn" class="ghost" type="button" aria-label="Mute audio">SOUND: OFF</button>
+        <button id="menuBtn" class="ghost" type="button" aria-label="Menu">⋯</button>
+      </div>
+    </header>
+
+    <!-- EGG-phase needs (warmth, hatch progress) -->
+    <aside class="needs" id="eggNeeds" aria-label="Egg state">
+      <div class="need" data-key="warmth">
+        <span class="need-icon" aria-hidden="true">☼</span>
+        <span class="need-label">WARMTH</span>
+        <div class="need-bar"><i id="bar-warmth"></i></div>
+      </div>
+      <div class="need critical" data-key="hatch">
+        <span class="need-icon" aria-hidden="true">◐</span>
+        <span class="need-label">HATCH</span>
+        <div class="need-bar"><i id="bar-hatch"></i></div>
+      </div>
+      <div class="egg-stat">
+        <span class="stat-label">TURNS</span>
+        <span class="stat-value" id="egg-turns">0</span>
+      </div>
+      <div class="egg-stat">
+        <span class="stat-label">TAPS</span>
+        <span class="stat-value" id="egg-taps">0</span>
+      </div>
+      <div class="egg-stat">
+        <span class="stat-label">ATTENTION</span>
+        <span class="stat-value" id="egg-attention">0</span>
+      </div>
+    </aside>
+
+    <!-- CHICKEN-phase needs -->
+    <aside class="needs" id="chickenNeeds" aria-label="Needs" hidden>
+      <div class="need" data-key="hunger">
+        <span class="need-icon" aria-hidden="true">⌬</span>
+        <span class="need-label">HUNGER</span>
+        <div class="need-bar"><i id="bar-hunger"></i></div>
+      </div>
+      <div class="need" data-key="energy">
+        <span class="need-icon" aria-hidden="true">◔</span>
+        <span class="need-label">ENERGY</span>
+        <div class="need-bar"><i id="bar-energy"></i></div>
+      </div>
+      <div class="need" data-key="happiness">
+        <span class="need-icon" aria-hidden="true">✿</span>
+        <span class="need-label">HAPPINESS</span>
+        <div class="need-bar"><i id="bar-happiness"></i></div>
+      </div>
+      <div class="need" data-key="cleanliness">
+        <span class="need-icon" aria-hidden="true">≈</span>
+        <span class="need-label">CLEANLINESS</span>
+        <div class="need-bar"><i id="bar-cleanliness"></i></div>
+      </div>
+      <div class="need critical" data-key="sanity">
+        <span class="need-icon" aria-hidden="true">◉</span>
+        <span class="need-label">SANITY</span>
+        <div class="need-bar"><i id="bar-sanity"></i></div>
+      </div>
+    </aside>
+
+    <!-- side stats: stats -->
+    <aside class="stats" aria-label="Stats">
+      <div class="stat">
+        <span class="stat-label">BOND</span>
+        <span class="stat-value" id="stat-bond">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">EGGS LAID</span>
+        <span class="stat-value" id="stat-eggs">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">POOPS</span>
+        <span class="stat-value" id="stat-poops">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">MEALS</span>
+        <span class="stat-value" id="stat-meals">0</span>
+      </div>
+    </aside>
+
+    <!-- center: the pet itself draws on the canvas behind everything. -->
+    <!-- This div is just a clickable hit target/spotlight. -->
+    <div class="habitat" id="habitat" aria-label="Your pet"></div>
+
+    <!-- EGG action bar -->
+    <footer class="actions" id="eggActions">
+      <button class="action" data-action="warm">
+        <span class="action-glyph">☼</span>
+        <span class="action-name">WARM</span>
+      </button>
+      <button class="action" data-action="cool">
+        <span class="action-glyph">❄</span>
+        <span class="action-name">COOL</span>
+      </button>
+      <button class="action" data-action="turn">
+        <span class="action-glyph">↻</span>
+        <span class="action-name">TURN</span>
+      </button>
+      <button class="action" data-action="tap">
+        <span class="action-glyph">·</span>
+        <span class="action-name">TAP</span>
+      </button>
+    </footer>
+
+    <!-- CHICKEN action bar -->
+    <footer class="actions" id="chickenActions" hidden>
+      <button class="action" data-action="feed">
+        <span class="action-glyph">🌾</span>
+        <span class="action-name">FEED</span>
+      </button>
+      <button class="action" data-action="play">
+        <span class="action-glyph">⚐</span>
+        <span class="action-name">PLAY</span>
+      </button>
+      <button class="action" data-action="pet">
+        <span class="action-glyph">♡</span>
+        <span class="action-name">PET</span>
+      </button>
+      <button class="action" data-action="clean">
+        <span class="action-glyph">⌫</span>
+        <span class="action-name">CLEAN</span>
+      </button>
+      <button class="action" data-action="sleep">
+        <span class="action-glyph">☾</span>
+        <span class="action-name">SLEEP</span>
+      </button>
+      <button class="action critical" data-action="medicate">
+        <span class="action-glyph">⊕</span>
+        <span class="action-name">MEDS</span>
+      </button>
+    </footer>
+
+    <!-- transient floating message ("+35 hunger") -->
+    <div class="float-msg" id="floatMsg" aria-live="polite"></div>
+  </main>
+
+  <!-- ===================== SHOP MODAL ===================== -->
+  <div id="shop" class="modal hidden" aria-hidden="true">
+    <div class="shop-card">
+      <header class="shop-head">
+        <div>
+          <p class="kicker">cluck store</p>
+          <h2>Things for your chicken</h2>
+        </div>
+        <div class="shop-head-right">
+          <span class="coin-balance">
+            <span class="coin-icon" aria-hidden="true">◎</span>
+            <b id="shopCoins">0</b>
+          </span>
+          <button id="shopClose" class="ghost" type="button">CLOSE</button>
+        </div>
+      </header>
+      <div id="shopBody" class="shop-body"></div>
+    </div>
+  </div>
+
+  <!-- shaders -->
+  <script type="x-shader/x-vertex" id="vs">
+    attribute vec2 a_position;
+    varying vec2 v_uv;
+    void main(){
+      v_uv = a_position * 0.5 + 0.5;
+      gl_Position = vec4(a_position, 0.0, 1.0);
+    }
+  </script>
+
+  <script type="x-shader/x-fragment" id="fs">
+    precision highp float;
+    varying vec2 v_uv;
+    uniform vec2  u_res;
+    uniform float u_time;
+    uniform float u_intensity;
+    uniform vec2  u_mouse;
+    uniform float u_pulse;
+    uniform float u_hue;
+
+    vec3 hsv2rgb(vec3 c){
+      vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+      vec3 p = abs(fract(c.xxx + K.xyz)*6.0 - K.www);
+      return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+    }
+    mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      float a = hash(i);
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      vec2 u = f*f*(3.0 - 2.0*f);
+      return mix(a,b,u.x) + (c-a)*u.y*(1.0 - u.x) + (d-b)*u.x*u.y;
+    }
+
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5*u_res) / min(u_res.x, u_res.y);
+      // calm baseline: just a vignette + soft hue.
+      // psychedelic only emerges with intensity (= 1 - sanity)
+      vec2 m = (u_mouse - 0.5) * 1.4;
+      uv += m * 0.08 * (0.2 + u_intensity);
+
+      float segs = mix(0.0, 12.0, u_intensity);
+      if(segs > 0.5){
+        float a = atan(uv.y, uv.x);
+        float r = length(uv);
+        a = mod(a, 6.28318 / segs);
+        a = abs(a - 3.14159 / segs);
+        uv = vec2(cos(a), sin(a)) * r;
+      }
+
+      float t = u_time * (0.06 + u_intensity * 0.45);
+      uv *= rot(t * 0.4 + length(uv) * (0.6 + u_intensity * 3.0));
+      float n = noise(uv * (3.0 + u_intensity*5.0) + t);
+
+      float r = length(uv);
+      float pulse = smoothstep(0.6, 0.0, abs(r - u_pulse));
+      pulse *= u_pulse > 0.001 ? 1.0 : 0.0;
+
+      float hue = u_hue + n * 0.4 + r * 0.3 + t * 0.05;
+      float ab = u_intensity * 0.04 + pulse * 0.05;
+      vec3 col;
+      col.r = hsv2rgb(vec3(hue - ab, 0.85, 0.85)).r;
+      col.g = hsv2rgb(vec3(hue,      0.85, 0.85)).g;
+      col.b = hsv2rgb(vec3(hue + ab, 0.85, 0.85)).b;
+      col += vec3(1.0, 0.95, 0.85) * pulse * 1.5;
+
+      float v = smoothstep(1.1, 0.2, r);
+      col *= mix(0.15, 1.0, v);
+
+      // base calm color when intensity = 0
+      vec3 calmBase = vec3(0.03, 0.025, 0.06);
+      col = mix(calmBase, col, u_intensity);
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  </script>
+
+  <script src="js/audio.js"></script>
+  <script src="js/microaudio.js"></script>
+  <script src="js/shader.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/egg.js"></script>
+  <script src="js/shop.js"></script>
+  <script src="js/pet.js"></script>
+  <script src="js/brain.js"></script>
+  <script src="js/llm.js"></script>
+  <script src="js/story.js"></script>
+  <script src="js/chicken.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
