@@ -178,17 +178,21 @@ h1,h2,h3,p{ margin:0; }
 .stage{
   position: relative;
   z-index: 3;
-  width: 100%; height: 100vh;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;                /* mobile URL-bar safe */
   display: grid;
-  grid-template-columns: 240px 1fr 240px;
+  grid-template-columns: 220px 1fr 220px;
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
     "topbar topbar topbar"
     "needs  habitat stats"
     "actions actions actions";
-  padding: clamp(16px, 2.4vw, 32px);
-  gap: clamp(16px, 2vw, 32px);
+  padding: clamp(12px, 1.8vw, 28px);
+  padding-bottom: max(clamp(12px, 1.8vw, 28px), env(safe-area-inset-bottom));
+  gap: clamp(12px, 1.6vw, 24px);
   pointer-events: none;
+  overflow: hidden;              /* never produce scrollbars */
 }
 .stage.hidden{ display: none; }
 .stage > *{ pointer-events: auto; }
@@ -632,23 +636,122 @@ h1,h2,h3,p{ margin:0; }
 }
 
 /* ============ responsive ============ */
-@media (max-width: 900px){
+
+/* Mid-size: laptops, smaller windows. Shrink side panels. */
+@media (max-width: 1100px){
+  .stage{ grid-template-columns: 180px 1fr 180px; }
+  .needs, .stats{ padding: 14px 12px; gap: 10px; }
+  .need-label, .stat-label{ font-size: 8.5px; letter-spacing: .18em; }
+  .stat-value{ font-size: 14px; }
+  .pet-name{ font-size: 24px; }
+  .vibe{ font-size: 15px; }
+}
+
+/* Tablet portrait & mobile landscape: stats panel hidden, needs compact */
+@media (max-width: 880px){
   .stage{
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
       "topbar"
       "needs"
       "habitat"
-      "stats"
       "actions";
   }
-  .needs, .stats{
+  .stats{ display: none; }
+  .needs{
     flex-direction: row; flex-wrap: wrap;
-    text-align: left;
+    justify-content: center;
+    gap: 8px 14px;
+    padding: 10px 14px;
   }
-  .topbar{ grid-template-columns: 1fr; gap: 8px; text-align: center; }
-  .top-left, .top-right{ justify-content: center; }
+  .need{
+    grid-template-columns: 16px auto auto;
+    grid-template-rows: auto;
+    gap: 4px 6px;
+    align-items: center;
+  }
+  .need-label{ font-size: 8px; }
+  .need-bar{ width: 60px; height: 3px; }
+  .topbar{ grid-template-columns: auto 1fr auto; gap: 8px; }
+  .top-left{ justify-content: flex-start; }
+  .top-center{ text-align: center; }
+  .top-right{ justify-content: flex-end; gap: 4px; }
+  .pet-name{ font-size: 18px; }
+  .pet-meta{ font-size: 9px; gap: 6px; }
+  .vibe{ font-size: 13px; }
+  .ghost{ padding: 6px 10px; font-size: 9px; }
+  .coin-balance{ padding: 6px 8px; font-size: 10px; }
+}
+
+/* Mobile portrait: tightest layout, smaller action buttons */
+@media (max-width: 540px){
+  .stage{
+    padding: 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+  .topbar{
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 4px;
+  }
+  .top-left{ grid-column: 1; grid-row: 1; }
+  .top-right{ grid-column: 2; grid-row: 1 / span 2; align-items: center; flex-wrap: wrap; }
+  .top-center{ grid-column: 1; grid-row: 2; text-align: left; }
+  .needs{
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+  .need{
+    grid-template-columns: 14px auto;
+    grid-template-rows: auto auto;
+    gap: 2px 4px;
+  }
+  .need-icon{ grid-row: 1 / span 2; font-size: 11px; }
+  .need-bar{ width: 50px; }
+  .actions{
+    padding: 6px;
+    gap: 4px;
+    width: 100%;
+    justify-content: space-around;
+  }
+  .action{
+    min-width: 0;
+    flex: 1;
+    padding: 8px 4px;
+  }
+  .action-glyph{ font-size: 17px; }
+  .action-name{ font-size: 8.5px; letter-spacing: .12em; }
+  /* Hide menu button on the tightest screens */
+  #menuBtn{ display: none; }
+}
+
+/* Landscape orientation on phones — very limited height */
+@media (max-height: 480px){
+  .stage{ padding: 6px; gap: 6px; }
+  .topbar{
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto;
+    align-items: center;
+  }
+  .top-center{ grid-column: 2; grid-row: 1; }
+  .pet-name{ font-size: 16px; }
+  .vibe{ font-size: 12px; }
+  .stats{ display: none; }
+  .needs{
+    flex-direction: row;
+    padding: 4px 8px;
+    gap: 6px;
+  }
+  .need{ grid-template-columns: 12px auto; }
+  .need-icon{ font-size: 10px; }
+  .need-label{ font-size: 7.5px; letter-spacing: .14em; }
+  .need-bar{ width: 40px; height: 3px; }
+  .actions{ padding: 4px; gap: 3px; }
+  .action{ padding: 6px 3px; min-width: 0; flex: 1; }
+  .action-glyph{ font-size: 15px; }
+  .action-name{ font-size: 8px; letter-spacing: .1em; }
 }
 
 @media (prefers-reduced-motion: reduce){
