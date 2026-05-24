@@ -28,13 +28,14 @@
     { name: 'elder', tMin: 7200,     max: Infinity },
   ];
 
-  // Default new-pet state
+  // Default new-pet state — starts as an EGG
   function freshPet(name){
     return {
-      name: name || 'CLUCK',
+      name: name || 'EGG',
       bornAt: Date.now(),
+      hatchedAt: null,
       lastTick: Date.now(),
-      hunger: 80,      // 0..100, higher = more full
+      hunger: 80,
       energy: 90,
       cleanliness: 100,
       happiness: 75,
@@ -47,7 +48,12 @@
       eggsLaid: 0,
       timesFed: 0,
       timesPlayed: 0,
-      version: 1,
+      version: 2,
+      // egg phase
+      egg: window.Egg ? window.Egg.fresh() : null,
+      variant: null,         // assigned at hatch
+      variantName: null,
+      variantTagline: null,
     };
   }
 
@@ -75,6 +81,21 @@
     const dt = Math.max(0, (now - pet.lastTick) / 1000);    // seconds
     pet.lastTick = now;
     if(dt < 0.01) return;
+
+    // ----- EGG PHASE -----
+    if(pet.egg){
+      // ambient is colder at night
+      const tod = window.World ? window.World.timeOfDay() : 0.5;
+      const isNight = tod < 0.22 || tod > 0.82;
+      const ambient = isNight ? 20 : 30;
+      window.Egg && window.Egg.tick(pet.egg, dt, ambient);
+
+      if(pet.egg.hatchProgress >= 100){
+        hatch();
+      }
+      // egg phase doesn't decay other stats
+      return;
+    }
 
     const hours = dt / 3600;
     // sleeping recovers energy + slower decay
@@ -123,6 +144,21 @@
   }
 
   function clamp(v){ return Math.max(0, Math.min(100, v)); }
+
+  // ---- HATCH ----
+  function hatch(){
+    if(!pet || !pet.egg) return;
+    const variant = window.Egg.variantFor(pet.egg);
+    pet.variant = variant.id;
+    pet.variantName = variant.name;
+    pet.variantTagline = variant.tagline;
+    pet.hatchedAt = Date.now();
+    pet.onHatch = true;       // transient flag for UI
+    pet.egg = null;
+    // tiny variant-driven stat bumps
+    pet.sanity = clamp(100 + variant.sanityBoost);
+    save();
+  }
 
   function ageSeconds(){
     if(!pet) return 0;
@@ -231,6 +267,36 @@
     else if(pet) { pet.lastTick = Date.now(); tickElapsed(Date.now()); }
   });
 
+  // ---- EGG ACTIONS ----
+  function eggAction(name){
+    if(!pet || !pet.egg) return false;
+    const a = window.Egg && window.Egg.actions[name];
+    if(!a) return false;
+    a(pet.egg);
+    save();
+    return true;
+  }
+  function forceHatch(){
+    if(!pet || !pet.egg) return false;
+    pet.egg.hatchProgress = 100;
+    hatch();
+    return true;
+  }
+  function isEgg(){ return !!(pet && pet.egg); }
+
+  function eggVibe(){
+    if(!pet || !pet.egg) return '';
+    const e = pet.egg;
+    if(e.warmth < 25) return `the egg is freezing.`;
+    if(e.warmth > 92) return `the egg is overheating.`;
+    if(e.warmth > 85) return `the egg is very hot.`;
+    if(e.hatchProgress > 90) return `something is moving inside the egg.`;
+    if(e.hatchProgress > 60) return `the egg trembles.`;
+    if(e.hatchProgress > 30) return `the egg is warming up nicely.`;
+    if(e.warmth < 40) return `the egg is cold.`;
+    return `the egg waits.`;
+  }
+
   window.Pet = {
     init,
     get(){ return pet; },
@@ -238,9 +304,10 @@
     tick: tickElapsed,
     feed, play, clean, sleep, medicate, pet: pet_,
     reset, stage, vibe, ageSeconds,
+    isEgg, eggAction, forceHatch, eggVibe,
     clearTransients(){
       if(!pet) return;
-      pet.onFeed = pet.onPlay = pet.onPet = pet.onMeds = pet.onLayEgg = false;
+      pet.onFeed = pet.onPlay = pet.onPet = pet.onMeds = pet.onLayEgg = pet.onHatch = false;
     },
   };
 })();

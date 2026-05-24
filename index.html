@@ -22,20 +22,34 @@
   <!-- ===================== NAMING DIALOG (first visit) ===================== -->
   <div id="naming" class="modal hidden" aria-hidden="true">
     <div class="modal-card">
-      <p class="kicker">welcome to cluckbot</p>
-      <h1>Your robot chicken<br/><em>hatched.</em></h1>
-      <p class="lede">Name it. Care for it. Don't let it go insane.</p>
+      <p class="kicker">cluckbot · 2026</p>
+      <h1>You have been given<br/>an <em>egg.</em></h1>
+      <p class="lede">Keep it warm. Turn it. Pay attention.<br/>Whatever hatches will depend on how you cared for it.</p>
       <form id="nameForm" autocomplete="off">
-        <input id="nameInput" type="text" maxlength="12" placeholder="CLUCK" required />
+        <label for="nameInput" class="form-label">name the egg</label>
+        <input id="nameInput" type="text" maxlength="12" placeholder="EGG" required />
         <button class="cta" type="submit">
-          <span class="cta-label">Begin life
+          <span class="cta-label">Receive your egg
             <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
               <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </span>
         </button>
       </form>
-      <p class="modal-hint">your pet ages, gets hungry, and loses sanity in real time — even when you close the tab</p>
+      <p class="modal-hint">real time runs even when this tab is closed.<br/>your egg gets cold at night. don't forget it.</p>
+    </div>
+  </div>
+
+  <!-- ===================== HATCH CEREMONY ===================== -->
+  <div id="hatch" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <p class="kicker">it hatched</p>
+      <h1 id="variantName">COSMIC</h1>
+      <p class="variant-tag" id="variantTag">born from perfect balance.</p>
+      <div class="variant-swatch" id="variantSwatch" aria-hidden="true"></div>
+      <button id="hatchContinue" class="cta" type="button">
+        <span class="cta-label">Meet your chicken</span>
+      </button>
     </div>
   </div>
 
@@ -78,8 +92,34 @@
       </div>
     </header>
 
-    <!-- side stats: needs -->
-    <aside class="needs" aria-label="Needs">
+    <!-- EGG-phase needs (warmth, hatch progress) -->
+    <aside class="needs" id="eggNeeds" aria-label="Egg state">
+      <div class="need" data-key="warmth">
+        <span class="need-icon" aria-hidden="true">☼</span>
+        <span class="need-label">WARMTH</span>
+        <div class="need-bar"><i id="bar-warmth"></i></div>
+      </div>
+      <div class="need critical" data-key="hatch">
+        <span class="need-icon" aria-hidden="true">◐</span>
+        <span class="need-label">HATCH</span>
+        <div class="need-bar"><i id="bar-hatch"></i></div>
+      </div>
+      <div class="egg-stat">
+        <span class="stat-label">TURNS</span>
+        <span class="stat-value" id="egg-turns">0</span>
+      </div>
+      <div class="egg-stat">
+        <span class="stat-label">TAPS</span>
+        <span class="stat-value" id="egg-taps">0</span>
+      </div>
+      <div class="egg-stat">
+        <span class="stat-label">ATTENTION</span>
+        <span class="stat-value" id="egg-attention">0</span>
+      </div>
+    </aside>
+
+    <!-- CHICKEN-phase needs -->
+    <aside class="needs" id="chickenNeeds" aria-label="Needs" hidden>
       <div class="need" data-key="hunger">
         <span class="need-icon" aria-hidden="true">⌬</span>
         <span class="need-label">HUNGER</span>
@@ -131,8 +171,28 @@
     <!-- This div is just a clickable hit target/spotlight. -->
     <div class="habitat" id="habitat" aria-label="Your pet"></div>
 
-    <!-- action bar -->
-    <footer class="actions">
+    <!-- EGG action bar -->
+    <footer class="actions" id="eggActions">
+      <button class="action" data-action="warm">
+        <span class="action-glyph">☼</span>
+        <span class="action-name">WARM</span>
+      </button>
+      <button class="action" data-action="cool">
+        <span class="action-glyph">❄</span>
+        <span class="action-name">COOL</span>
+      </button>
+      <button class="action" data-action="turn">
+        <span class="action-glyph">↻</span>
+        <span class="action-name">TURN</span>
+      </button>
+      <button class="action" data-action="tap">
+        <span class="action-glyph">·</span>
+        <span class="action-name">TAP</span>
+      </button>
+    </footer>
+
+    <!-- CHICKEN action bar -->
+    <footer class="actions" id="chickenActions" hidden>
       <button class="action" data-action="feed">
         <span class="action-glyph">🌾</span>
         <span class="action-name">FEED</span>
@@ -245,6 +305,8 @@
 
   <script src="js/audio.js"></script>
   <script src="js/shader.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/egg.js"></script>
   <script src="js/pet.js"></script>
   <script src="js/chicken.js"></script>
   <script src="js/main.js"></script>

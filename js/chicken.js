@@ -15,6 +15,10 @@
     intensity: 0,         // 0..1, derived from 1 - sanity/100
     pose: 'idle',         // 'idle' | 'eating' | 'playing' | 'sleeping' | 'pet' | 'dead'
     emotion: 'fine',      // 'fine' | 'sad' | 'panicked' | 'transcendent' | 'sleepy'
+    variant: null,        // variant object { colors: [...], ... }
+    isEgg: false,
+    egg: null,            // egg state passthrough
+    hatchAnim: 0,         // 0..1 hatch ceremony progress
     mouse: { x: 0.5, y: 0.5 },
     targetMouse: { x: 0.5, y: 0.5 },
     feathers: [],
@@ -129,18 +133,23 @@
       drawLeg( U*0.22, 0, t,  1);
     }
 
-    // ---- body ----
+    // ---- body — colored by variant ----
     const bodyGrad = ctx.createRadialGradient(-U*0.2, -U*0.3, U*0.1, 0, 0, U);
-    if(s.intensity < 0.6){
+    const v = s.variant;
+    if(s.intensity > 0.6){
+      const hue = (t * 0.05) % 360;
+      bodyGrad.addColorStop(0, `hsl(${hue}, 100%, 85%)`);
+      bodyGrad.addColorStop(1, `hsl(${(hue+80)%360}, 100%, 35%)`);
+    } else if(v && v.colors){
+      bodyGrad.addColorStop(0, '#ffffff');
+      bodyGrad.addColorStop(0.3, v.colors[0]);
+      bodyGrad.addColorStop(0.7, v.colors[1]);
+      bodyGrad.addColorStop(1, v.colors[2] || v.colors[1]);
+    } else {
       bodyGrad.addColorStop(0, '#ffffff');
       bodyGrad.addColorStop(0.3, '#e8eaff');
       bodyGrad.addColorStop(0.65, '#7a8cc7');
       bodyGrad.addColorStop(1, '#1d1740');
-    } else {
-      // colors shift as sanity drops
-      const hue = (t * 0.05) % 360;
-      bodyGrad.addColorStop(0, `hsl(${hue}, 100%, 85%)`);
-      bodyGrad.addColorStop(1, `hsl(${(hue+80)%360}, 100%, 35%)`);
     }
     ctx.fillStyle = bodyGrad;
     ctx.beginPath();
@@ -423,7 +432,7 @@
     while(s.poops.length > count) s.poops.pop();
   }
 
-  function drawEgg(e){
+  function drawLaidEgg(e){
     ctx.save();
     ctx.translate(e.x, e.y);
     ctx.rotate(e.rot);
@@ -440,6 +449,41 @@
     ctx.ellipse(0, 0, e.r*0.78, e.r, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.restore();
+  }
+
+  function tickParticles(t){
+    for(let i = s.particles.length - 1; i >= 0; i--){
+      const p = s.particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.03;
+      p.life -= p.decay;
+      if(p.life <= 0){ s.particles.splice(i,1); continue; }
+      ctx.save();
+      ctx.globalAlpha = p.life;
+      if(p.type === 'heart'){
+        ctx.translate(p.x, p.y);
+        ctx.scale(p.r/10, p.r/10);
+        ctx.fillStyle = `hsl(${p.hue}, 90%, 70%)`;
+        ctx.beginPath();
+        ctx.moveTo(0, 3);
+        ctx.bezierCurveTo(8, -5, 4, -12, 0, -6);
+        ctx.bezierCurveTo(-4, -12, -8, -5, 0, 3);
+        ctx.fill();
+      } else if(p.type === 'grain'){
+        ctx.fillStyle = `hsl(35, 80%, 65%)`;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, p.r, p.r*0.4, 0.5, 0, Math.PI*2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.life})`;
+        ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    }
   }
 
   function drawPoop(p){
@@ -460,6 +504,150 @@
     ctx.restore();
   }
 
+  // ---- EGG drawing ----
+  function drawEgg(t){
+    const e = s.egg;
+    if(!e) return;
+    const cx = s.cx, cy = s.cy;
+    const wobble = Math.sin(t * 0.005) * (1 + e.hatchProgress * 0.04);
+    const heat = (e.warmth - 50) / 50; // -1..1
+    const eggR = 78;
+
+    // nest under egg
+    ctx.save();
+    ctx.translate(cx, cy + eggR + 16);
+    // nest twigs
+    ctx.strokeStyle = '#6b4a2a';
+    ctx.lineWidth = 3;
+    for(let i = 0; i < 10; i++){
+      const a = (i / 10) * Math.PI;
+      const r = 90;
+      const x1 = Math.cos(a) * r;
+      const y1 = Math.sin(a) * 8;
+      ctx.beginPath();
+      ctx.moveTo(x1 - 20, y1 - 2); ctx.lineTo(x1 + 20, y1 + 4);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#4a3318';
+    ctx.lineWidth = 2;
+    for(let i = 0; i < 8; i++){
+      ctx.beginPath();
+      const x = -70 + i * 18;
+      ctx.moveTo(x - 12, 6); ctx.lineTo(x + 14, -2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // glow halo (warmth visualization)
+    if(e.warmth > 50){
+      const halo = ctx.createRadialGradient(cx, cy, eggR * 0.5, cx, cy, eggR * 3);
+      halo.addColorStop(0, `rgba(255, 200, 100, ${Math.min(0.45, (e.warmth - 50) / 200)})`);
+      halo.addColorStop(1, 'rgba(255, 200, 100, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(cx, cy, eggR * 3, 0, Math.PI*2); ctx.fill();
+    } else if(e.warmth < 40){
+      const halo = ctx.createRadialGradient(cx, cy, eggR * 0.5, cx, cy, eggR * 3);
+      halo.addColorStop(0, `rgba(127, 191, 255, ${Math.min(0.35, (40 - e.warmth) / 100)})`);
+      halo.addColorStop(1, 'rgba(127, 191, 255, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(cx, cy, eggR * 3, 0, Math.PI*2); ctx.fill();
+    }
+
+    // egg shadow
+    ctx.fillStyle = 'rgba(20, 5, 35, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + eggR * 0.9, eggR * 0.7, eggR * 0.13, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // egg body
+    ctx.save();
+    ctx.translate(cx + wobble, cy);
+
+    const eg = ctx.createRadialGradient(-15, -25, 8, 0, 0, eggR);
+    eg.addColorStop(0, '#ffffff');
+    eg.addColorStop(0.5,
+      heat > 0 ? `hsl(${30 - heat * 10}, ${50 + heat * 30}%, ${85 - heat * 10}%)`
+               : `hsl(${200 + Math.abs(heat) * 20}, 40%, ${85 - Math.abs(heat) * 10}%)`
+    );
+    eg.addColorStop(1, heat > 0 ? '#c97a44' : '#7a8cc7');
+    ctx.fillStyle = eg;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, eggR * 0.78, eggR, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // speckles
+    ctx.fillStyle = 'rgba(60, 40, 30, 0.45)';
+    for(let i = 0; i < 12; i++){
+      const ang = (i / 12) * Math.PI * 2;
+      const r = (eggR * 0.4) + ((i * 17) % 25);
+      ctx.beginPath();
+      ctx.arc(Math.cos(ang) * r * 0.6, Math.sin(ang) * r, 1.5 + ((i*3)%2), 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // cracks appear as hatchProgress climbs
+    if(e.hatchProgress > 40){
+      const cracks = Math.min(6, Math.floor(e.hatchProgress / 12));
+      ctx.strokeStyle = 'rgba(40, 20, 50, 0.75)';
+      ctx.lineWidth = 1.6;
+      for(let i = 0; i < cracks; i++){
+        ctx.save();
+        ctx.rotate((i / cracks) * Math.PI * 2 + 0.6);
+        ctx.beginPath();
+        ctx.moveTo(0, -eggR * 0.5);
+        for(let j = 1; j <= 4; j++){
+          const dx = (Math.random() - 0.5) * 12;
+          const dy = -eggR * 0.5 + j * 18;
+          ctx.lineTo(dx, dy);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // tremble particles when close to hatching
+    if(e.hatchProgress > 70 && Math.random() < 0.3){
+      spawnSparkle(cx + (Math.random() - 0.5) * eggR * 1.5, cy + (Math.random() - 0.5) * eggR);
+    }
+
+    ctx.restore();
+
+    // hatch progress ring
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = 'rgba(255,255,255,.06)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, eggR + 14, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ff7fd6';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#ff7fd6';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(0, 0, eggR + 14, -Math.PI / 2, -Math.PI / 2 + (e.hatchProgress / 100) * Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // ---- HATCH ceremony overlay ----
+  function drawHatchBurst(t){
+    const a = s.hatchAnim;
+    if(a <= 0) return;
+    const cx = s.cx, cy = s.cy;
+    const ringR = 30 + (1 - a) * 320;
+    ctx.save();
+    ctx.globalAlpha = a;
+    const grad = ctx.createRadialGradient(cx, cy, ringR * 0.3, cx, cy, ringR);
+    grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
   // ---- main render ----
   function render(t){
     s.time = t * 0.001;
@@ -469,23 +657,29 @@
 
     // action flash decay
     if(s.actionFlash && s.actionFlash.until < t) s.actionFlash = null;
+    // hatch animation decay
+    if(s.hatchAnim > 0) s.hatchAnim -= 0.005;
 
     ctx.clearRect(0, 0, s.w, s.h);
     if(!s.enabled) return;
 
-    // chicken sits centered, slightly above middle
+    // ---- WORLD (sky/ground/sun/moon/clouds) ----
+    if(window.World) window.World.draw(ctx, t, s.w, s.h);
+
+    // pet position
     s.cx = s.w * 0.5;
-    s.cy = s.h * 0.6;
+    s.cy = s.h * 0.66;
 
-    // floor strip — subtle gradient under the chicken
-    const floorGrad = ctx.createLinearGradient(0, s.cy + 60, 0, s.cy + 200);
-    floorGrad.addColorStop(0, 'rgba(255,255,255,0.04)');
-    floorGrad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = floorGrad;
-    ctx.fillRect(s.cx - 280, s.cy + 60, 560, 200);
+    // ---- EGG MODE: draw the unhatched egg and return ----
+    if(s.isEgg){
+      drawEgg(t);
+      // egg-mode particles still tick
+      tickParticles(t);
+      return;
+    }
 
-    // draw eggs (behind chicken)
-    s.eggs.forEach(drawEgg);
+    // draw eggs the chicken has laid (behind chicken)
+    s.eggs.forEach(drawLaidEgg);
 
     // ghost copies of chicken when sanity low
     const copies = 1 + Math.floor(s.intensity * 3);
@@ -526,38 +720,10 @@
     }
 
     // particles (hearts, sparkles, grain)
-    for(let i = s.particles.length - 1; i >= 0; i--){
-      const p = s.particles[i];
-      p.x += p.vx; p.y += p.vy;
-      p.vy += 0.03;
-      p.life -= p.decay;
-      if(p.life <= 0){ s.particles.splice(i,1); continue; }
-      ctx.save();
-      ctx.globalAlpha = p.life;
-      if(p.type === 'heart'){
-        ctx.translate(p.x, p.y);
-        ctx.scale(p.r/10, p.r/10);
-        ctx.fillStyle = `hsl(${p.hue}, 90%, 70%)`;
-        ctx.beginPath();
-        ctx.moveTo(0, 3);
-        ctx.bezierCurveTo(8, -5, 4, -12, 0, -6);
-        ctx.bezierCurveTo(-4, -12, -8, -5, 0, 3);
-        ctx.fill();
-      } else if(p.type === 'grain'){
-        ctx.fillStyle = `hsl(35, 80%, 65%)`;
-        ctx.beginPath();
-        ctx.ellipse(p.x, p.y, p.r, p.r*0.4, 0.5, 0, Math.PI*2);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.life})`;
-        ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-      ctx.restore();
-    }
+    tickParticles(t);
+
+    // hatch ceremony overlay
+    drawHatchBurst(t);
   }
 
   // ---- API ----
@@ -572,6 +738,33 @@
     setMouse(x, y){ s.targetMouse.x = x; s.targetMouse.y = y; },
     setEggCount(n){ ensureEggs(Math.min(n, 12)); },
     setPoopCount(n){ ensurePoops(Math.min(n, 5)); },
+    setEgg(egg){ s.isEgg = !!egg; s.egg = egg; },
+    setVariant(v){ s.variant = v; },
+    triggerHatchBurst(){ s.hatchAnim = 1; },
+    eggCenter(){ return { x: s.cx, y: s.cy }; },
+    reactWarm(t){
+      const c = s.cx, cy = s.cy;
+      for(let i = 0; i < 8; i++){
+        s.particles.push({
+          x: c + (Math.random() - 0.5) * 80,
+          y: cy + 50, vx: (Math.random() - 0.5) * 2, vy: -1 - Math.random() * 2,
+          r: 2 + Math.random(), hue: 30, life: 1, decay: 0.02,
+        });
+      }
+    },
+    reactCool(t){
+      const c = s.cx, cy = s.cy;
+      for(let i = 0; i < 8; i++){
+        s.particles.push({
+          x: c + (Math.random() - 0.5) * 80,
+          y: cy - 50, vx: (Math.random() - 0.5) * 1.5, vy: 1 + Math.random() * 1.5,
+          r: 1.5 + Math.random(), hue: 210, life: 1, decay: 0.02,
+        });
+      }
+    },
+    reactTurn(t){
+      for(let i = 0; i < 5; i++) spawnSparkle(s.cx + (Math.random()-0.5)*60, s.cy);
+    },
     reactFeed(t){
       s.actionFlash = { kind: 'feed', until: t + 600 };
       const cx = s.cx, cy = s.cy;
