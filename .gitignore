@@ -5,3 +5,6 @@ node_modules/
 # Screenshot output from playtest scripts
 *.png
 !docs/*.png
+
+# MCP credentials — never commit
+.mcp.json
