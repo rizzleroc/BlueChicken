@@ -150,6 +150,8 @@
         // cap can be 'available' | 'downloadable' | 'downloading' | 'unavailable'
         if(cap === 'available' || cap === 'downloadable'){
           state.session = await self.LanguageModel.create({
+            expectedInputs:  [{ type: 'text', languages: ['en'] }],
+            expectedOutputs: [{ type: 'text', languages: ['en'] }],
             initialPrompts: [{
               role: 'system',
               content: `You are CLUCKBOT, a small robot chicken with feelings. You respond with ONE short sentence (max 60 chars) as the chicken thinking aloud. Lowercase. No emojis. Slightly poetic, slightly weird. Stay in character. No quotation marks.`

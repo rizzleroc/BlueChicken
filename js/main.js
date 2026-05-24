@@ -102,6 +102,18 @@
     ChickenPet.setMouse(mx, my);
     PsyShader.setMouse(mx, my);
     if(window.Brain) window.Brain.setMouse(mx, my);
+    // hover-near-chicken: snap gaze + flag the cursor cursor pointer
+    const c = ChickenPet.centerXY && ChickenPet.centerXY();
+    if(c){
+      const dx = e.clientX - c.x, dy = e.clientY - c.y;
+      const near = (dx*dx + dy*dy) < 110 * 110;
+      document.body.style.cursor = near ? 'pointer' : '';
+      if(near && window.Brain){
+        const s = window.Brain.state();
+        s.gazeLinger = 0;       // re-engage tracking
+        s.lastMouseAt = performance.now();
+      }
+    }
   }, { passive: true });
 
   // when the cursor leaves the window, the chicken looks toward the edge
@@ -201,6 +213,14 @@
   let floatTimer = null;
   function showFloat(text){
     floatMsg.textContent = text;
+    // anchor above the chicken's current position
+    const c = ChickenPet.centerXY && ChickenPet.centerXY();
+    if(c){
+      floatMsg.style.left = c.x + 'px';
+      floatMsg.style.bottom = 'auto';
+      floatMsg.style.top = (c.y - 140) + 'px';
+      floatMsg.style.transform = 'translateX(-50%)';
+    }
     floatMsg.classList.add('show');
     clearTimeout(floatTimer);
     floatTimer = setTimeout(() => floatMsg.classList.remove('show'), 1100);
@@ -407,9 +427,8 @@
       ChickenPet.setEggCount(Math.min(pet.eggsLaid, 12));
       ChickenPet.setPoopCount(pet.poops);
       if(pet.onLayEgg){ ChickenPet.reactLayEgg(t); showFloat('🥚 egg laid!'); pet.onLayEgg = false; }
+      // pose is now owned by Brain.tick — only override for terminal states
       if(pet.isDead) ChickenPet.setPose('dead');
-      else if(pet.isSleeping) ChickenPet.setPose('sleeping');
-      else ChickenPet.setPose('idle');
     }
 
     // BRAIN: autonomous behavior + grain particles when pecking
@@ -451,7 +470,19 @@
     $('#petVibe').textContent = persLabel
       ? `${baseVibe}  ·  ${persLabel}`
       : baseVibe;
-    $('#coinCount').textContent = Math.floor(pet.coins || 0);
+    // coin display + pop animation when balance increases
+    const coinEl = $('#coinCount');
+    const newCoins = Math.floor(pet.coins || 0);
+    if(state.lastCoins !== undefined && newCoins > state.lastCoins){
+      const badge = coinEl.closest('.coin-balance');
+      if(badge){
+        badge.classList.remove('pop');
+        void badge.offsetWidth;        // restart animation
+        badge.classList.add('pop');
+      }
+    }
+    state.lastCoins = newCoins;
+    coinEl.textContent = newCoins;
 
     if(pet.egg){
       setBar('warmth', pet.egg.warmth);
@@ -477,6 +508,10 @@
       if(playBtn) playBtn.disabled = pet.energy < 10 || pet.isSleeping;
       const feedBtn = document.querySelector('#chickenActions .action[data-action="feed"]');
       if(feedBtn) feedBtn.disabled = pet.isSleeping;
+      const medsBtn = document.querySelector('#chickenActions .action[data-action="medicate"]');
+      if(medsBtn) medsBtn.disabled = pet.sanity > 80;     // only when needed
+      const cleanBtn = document.querySelector('#chickenActions .action[data-action="clean"]');
+      if(cleanBtn) cleanBtn.disabled = pet.cleanliness > 85 && pet.poops === 0;
     }
   }
 

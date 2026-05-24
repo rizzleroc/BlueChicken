@@ -245,6 +245,15 @@ h1,h2,h3,p{ margin:0; }
   letter-spacing: .12em;
   color: #ffd57f;
   font-variant-numeric: tabular-nums;
+  transition: transform .25s cubic-bezier(.2,.8,.2,1), background .25s ease;
+}
+.coin-balance.pop{
+  animation: coinPop .45s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes coinPop{
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); background: rgba(255, 213, 127, .25); }
+  100% { transform: scale(1); }
 }
 .coin-icon{
   font-size: 13px;

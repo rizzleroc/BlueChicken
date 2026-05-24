@@ -107,6 +107,23 @@
     ctx.closePath();
   }
 
+  // ----- color helpers -----
+  function hexToRgb(hex){
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if(!m) return [255, 255, 255];
+    return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)];
+  }
+  function lighten(hex, amount){
+    const [r,g,b] = hexToRgb(hex);
+    const m = (c) => Math.round(c + (255 - c) * amount);
+    return `rgb(${m(r)}, ${m(g)}, ${m(b)})`;
+  }
+  function darken(hex, amount){
+    const [r,g,b] = hexToRgb(hex);
+    const m = (c) => Math.round(c * (1 - amount));
+    return `rgb(${m(r)}, ${m(g)}, ${m(b)})`;
+  }
+
   // ----- secondary-motion springs -----
   // simple critically-damped springs that track a target with a soft lag.
   // applied to wattle, tail, head to give 'follow-through' on movement.
@@ -129,6 +146,29 @@
   function drawChicken(t, scale){
     scale = scale || 1;
     const U = 100 * scale;
+    // dead state: slumped, X eyes (handled in drawEye via s.pose), no anim
+    const isDead = window.Brain && window.Brain.pose() === 'dead';
+    if(isDead){
+      ctx.save();
+      ctx.translate(0, U * 0.45);
+      ctx.rotate(-Math.PI/2);
+      ctx.scale(0.95, 0.95);
+      // body
+      const v2 = s.variant;
+      ctx.fillStyle = v2 && v2.colors ? darken(v2.colors[2] || v2.colors[1], 0.3) : '#3a3458';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, U*0.78, U*0.62, 0, 0, Math.PI*2);
+      ctx.fill();
+      // X eye
+      ctx.strokeStyle = '#0a0710';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-6, -4); ctx.lineTo(6, 4);
+      ctx.moveTo(6, -4); ctx.lineTo(-6, 4);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
     // breathing — slow base rhythm with rare sighs that elongate one exhale
     const breathPhase = t * 0.0022;
     const sigh = Math.sin(t * 0.00037) > 0.94 ? 1.4 : 1;     // ~5s sighs
@@ -166,9 +206,12 @@
     const celebrateBounce = celebrating ? Math.abs(Math.sin(t * 0.012)) * 14 : 0;
     const danceBounce = dancing ? Math.abs(Math.sin(t * 0.018)) * 18 : 0;
     const danceRoll = dancing ? Math.sin(t * 0.008) * 0.18 : 0;
-    const bowForward = bowing ? Math.min(1, (t * 0.005) % 2) * 0 : 0;
-    const surpriseJerk = surprised ? -Math.max(0, 1 - ((t * 0.01) % 1)) * 12 : 0;
-    const sneezeJerk = sneezing ? Math.sin(t * 0.04) * 6 : 0;
+    // bow leans forward + down via head offset (real lean, not 0)
+    const bowForward = bowing ? 8 : 0;
+    // surprise: sharp upward jerk then settle (was dead code via mod cycle)
+    const surpriseJerk = surprised ? -14 : 0;
+    const sneezeJerk = sneezing ? Math.sin(t * 0.04) * 10 : 0;
+    const stretchUp = stretching ? -8 : 0;
 
     // intensity-driven micro-shake
     const sx = (Math.random() - 0.5) * s.intensity * 14;
@@ -178,8 +221,8 @@
     // (used by some pose offsets below)
 
     ctx.save();
-    ctx.translate(sx + sneezeJerk, sy + breathe + walkBob + sitDrop - celebrateBounce - danceBounce + surpriseJerk);
-    ctx.scale(facing * cowerSquash, cowerSquash * breathSquashY);
+    ctx.translate(sx + sneezeJerk, sy + breathe + walkBob + sitDrop - celebrateBounce - danceBounce + surpriseJerk + stretchUp);
+    ctx.scale(facing * cowerSquash, cowerSquash * breathSquashY * (stretching ? 1.08 : 1));
     ctx.rotate(danceRoll);
 
     // shadow
@@ -203,9 +246,12 @@
       bodyGrad.addColorStop(0, `hsl(${hue}, 100%, 85%)`);
       bodyGrad.addColorStop(1, `hsl(${(hue+80)%360}, 100%, 35%)`);
     } else if(v && v.colors){
-      bodyGrad.addColorStop(0, '#ffffff');
-      bodyGrad.addColorStop(0.3, v.colors[0]);
-      bodyGrad.addColorStop(0.7, v.colors[1]);
+      // use the lightest variant color as the highlight, not pure white,
+      // so feral / ghost / lunar read as their actual color identity.
+      const highlight = lighten(v.colors[0], 0.35);
+      bodyGrad.addColorStop(0, highlight);
+      bodyGrad.addColorStop(0.35, v.colors[0]);
+      bodyGrad.addColorStop(0.75, v.colors[1]);
       bodyGrad.addColorStop(1, v.colors[2] || v.colors[1]);
     } else {
       bodyGrad.addColorStop(0, '#ffffff');
@@ -255,21 +301,23 @@
 
     // neck + head — varied by pose
     let headTilt;
+    let headYOffset = 0;     // extra vertical translation for poses that duck the head
     if(peck)            headTilt = 1.3;
     else if(sleep)      headTilt = -0.6;
     else if(yawning)    headTilt = -0.4;
     else if(stretching) headTilt = -1.0;
-    else if(bowing)     headTilt = 0.9;
-    else if(cowering)   headTilt = 1.4;
-    else if(surprised) headTilt = -0.3;
+    else if(bowing)     { headTilt = 0.5; headYOffset = 18; }      // real forward+down lean
+    else if(cowering)   { headTilt = 0.4; headYOffset = 22; }      // ducked, not face-planted
+    else if(surprised)  headTilt = -0.3;
     else if(pose === 'looking') headTilt = Math.sin(t * 0.003) * 0.4;
     else if(dancing)    headTilt = Math.sin(t * 0.014) * 0.5;
     else {
+      // smooth track of cursor regardless of sanity
       const look = (window.Brain && window.Brain.headLook && window.Brain.headLook()) || { x: 0, y: 0 };
       headTilt = (look.x * 0.6) + (look.y * 0.3);
     }
     const headX = Math.cos(headTilt - Math.PI/2) * U*0.7;
-    const headY = Math.sin(headTilt - Math.PI/2) * U*0.7 + (peck ? 30 : 0);
+    const headY = Math.sin(headTilt - Math.PI/2) * U*0.7 + (peck ? 30 : 0) + headYOffset;
 
     ctx.save();
     ctx.strokeStyle = '#cdd6f4';
@@ -384,7 +432,11 @@
     ctx.translate(x, y);
     const tilt = Math.sin(t * 0.003) * 0.2 + (extraRot || 0);
     ctx.rotate(tilt - 0.3);
-    const colors = ['#ff5dd6', '#ffd57f', '#7fe9ff', '#7cff9a'];
+    // tail color: variant-tinted, or default rainbow for non-variant pets
+    const v = s.variant;
+    const colors = v && v.colors
+      ? [ v.colors[0], v.colors[1], v.colors[2] || v.colors[0], lighten(v.colors[0], 0.4) ]
+      : ['#ff5dd6', '#ffd57f', '#7fe9ff', '#7cff9a'];
     for(let i=0;i<4;i++){
       ctx.save();
       ctx.rotate(-0.3 + i * 0.18);
@@ -417,8 +469,9 @@
     ctx.arc(0, 0, 34, 0, Math.PI*2);
     ctx.fill();
 
-    // comb
-    ctx.fillStyle = '#ff3c5c';
+    // comb — variant-tinted
+    const v = s.variant;
+    ctx.fillStyle = v && v.colors ? darken(v.colors[0], 0.05) : '#ff3c5c';
     ctx.beginPath();
     for(let i=0;i<3;i++){
       ctx.arc(-10 + i*10, -32, 8 + (i===1?2:0), Math.PI, 0);
@@ -435,7 +488,8 @@
     const ledPulse = 0.6 + Math.sin(t * 0.02) * 0.4;
     const ledColor = sleep
       ? '#5a548c'
-      : (s.intensity > 0.5 ? `hsl(${(t*0.4)%360}, 100%, 65%)` : `hsl(${(t*0.05)%360}, 80%, 60%)`);
+      : (s.intensity > 0.5 ? `hsl(${(t*0.4)%360}, 100%, 65%)`
+        : (v && v.colors ? lighten(v.colors[0], 0.2) : `hsl(${(t*0.05)%360}, 80%, 60%)`));
     ctx.fillStyle = ledColor;
     ctx.shadowColor = ledColor;
     ctx.shadowBlur = sleep ? 4 : 14;
@@ -1038,7 +1092,8 @@
       ctx.fill();
     }
 
-    // cracks appear as hatchProgress climbs
+    // cracks appear as hatchProgress climbs — deterministic per-crack offsets
+    // so they stay still instead of shimmering every frame.
     if(e.hatchProgress > 40){
       const cracks = Math.min(6, Math.floor(e.hatchProgress / 12));
       ctx.strokeStyle = 'rgba(40, 20, 50, 0.75)';
@@ -1049,7 +1104,9 @@
         ctx.beginPath();
         ctx.moveTo(0, -eggR * 0.5);
         for(let j = 1; j <= 4; j++){
-          const dx = (Math.random() - 0.5) * 12;
+          // pseudo-random but stable: hash on crack index + segment index
+          const seed = Math.sin(i * 12.9898 + j * 78.233) * 43758.5453;
+          const dx = ((seed - Math.floor(seed)) - 0.5) * 12;
           const dy = -eggR * 0.5 + j * 18;
           ctx.lineTo(dx, dy);
         }

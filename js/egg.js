@@ -86,10 +86,16 @@
     // accumulate cold/hot exposure
     if(egg.warmth < 35) egg.coldSeconds += dt;
     if(egg.warmth > 85) egg.hotSeconds += dt;
-    // hatch progress requires warmth in sweet spot
+    // hatch progress requires warmth in sweet spot AND ongoing attention.
+    // A neglected egg stalls at 50% — you can't hatch a ghost just by
+    // walking away. Attention must keep up with progress.
     const inSweet = egg.warmth > 40 && egg.warmth < 90;
     if(inSweet){
-      egg.hatchProgress = Math.min(100, egg.hatchProgress + dt * 0.9);
+      const attentionCap = 50 + egg.attention * 4;   // need ~12+ to hit 100
+      const target = Math.min(100, attentionCap);
+      if(egg.hatchProgress < target){
+        egg.hatchProgress = Math.min(target, egg.hatchProgress + dt * 0.9);
+      }
     } else {
       egg.hatchProgress = Math.max(0, egg.hatchProgress - dt * 0.3);
     }
