@@ -98,8 +98,10 @@
 
   // ---- input ----
   window.addEventListener('mousemove', (e) => {
-    ChickenPet.setMouse(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
-    PsyShader.setMouse(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+    const mx = e.clientX / window.innerWidth, my = e.clientY / window.innerHeight;
+    ChickenPet.setMouse(mx, my);
+    PsyShader.setMouse(mx, my);
+    if(window.Brain) window.Brain.setMouse(mx, my);
   }, { passive: true });
 
   habitat.addEventListener('click', () => {
@@ -150,16 +152,19 @@
     switch(action){
       case 'feed':
         ok = Pet.feed();
-        if(ok){ ChickenPet.reactFeed(now); msg = '+35 hunger'; PsyAudio.pluckCluck(); }
+        if(ok){ ChickenPet.reactFeed(now); window.Brain && window.Brain.react('feed', now);
+                msg = '+35 hunger'; PsyAudio.pluckCluck(); }
         break;
       case 'play':
         ok = Pet.play();
-        if(ok){ ChickenPet.reactPlay(now); msg = '+20 happiness'; PsyAudio.pluckCluck(); }
+        if(ok){ ChickenPet.reactPlay(now); window.Brain && window.Brain.react('play', now);
+                msg = '+20 happiness'; PsyAudio.pluckCluck(); }
         else if(pet.energy < 10){ msg = 'too tired to play'; ok = true; }
         break;
       case 'pet':
         ok = Pet.pet();
-        if(ok){ ChickenPet.reactPet(now); msg = '+bond'; }
+        if(ok){ ChickenPet.reactPet(now); window.Brain && window.Brain.react('pet', now);
+                msg = '+bond'; }
         break;
       case 'clean':
         ok = Pet.clean();
@@ -169,12 +174,14 @@
         ok = Pet.sleep();
         if(ok){
           ChickenPet.setPose(pet.isSleeping ? 'sleeping' : 'idle');
+          if(!pet.isSleeping) window.Brain && window.Brain.react('wake', now);
           msg = pet.isSleeping ? 'good night' : 'woke up';
         }
         break;
       case 'medicate':
         ok = Pet.medicate();
-        if(ok){ ChickenPet.reactMeds(now); msg = '+40 sanity'; PsyAudio.bigPulse(); }
+        if(ok){ ChickenPet.reactMeds(now); window.Brain && window.Brain.react('meds', now);
+                msg = '+40 sanity'; PsyAudio.bigPulse(); }
         break;
     }
     if(ok) showFloat(msg);
@@ -426,7 +433,12 @@
     $('#petName').textContent = pet.name;
     $('#petStage').textContent = pet.egg ? 'EGG' : Pet.stage();
     $('#petAge').textContent = formatAge(Pet.ageSeconds());
-    $('#petVibe').textContent = pet.egg ? Pet.eggVibe() : Pet.vibe();
+    // vibe + personality
+    const baseVibe = pet.egg ? Pet.eggVibe() : Pet.vibe();
+    const persLabel = pet.egg ? '' : Pet.personalityLabel();
+    $('#petVibe').textContent = persLabel
+      ? `${baseVibe}  ·  ${persLabel}`
+      : baseVibe;
     $('#coinCount').textContent = Math.floor(pet.coins || 0);
 
     if(pet.egg){

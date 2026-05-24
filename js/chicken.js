@@ -119,29 +119,43 @@
     const facing = B ? B.facing() : 1;
     const sleep = pose === 'sleeping';
     const peck = pose === 'pecking';
-    const sit = pose === 'sitting' || sleep;
+    const sit = pose === 'sitting' || sleep || pose === 'cowering';
     const walking = pose === 'walking';
     const celebrating = pose === 'celebrating';
+    const dancing = pose === 'dancing';
+    const yawning = pose === 'yawning';
+    const stretching = pose === 'stretching';
+    const waving = pose === 'waving';
+    const bowing = pose === 'bowing';
+    const cowering = pose === 'cowering';
+    const surprised = pose === 'surprised';
+    const sneezing = pose === 'sneezing';
+    const preening = pose === 'preening';
 
     // walking bob from leg cycle phase
-    let walkBob = 0, walkHip = 0, walkLeg = 0;
+    let walkBob = 0;
     if(walking && B){
       const ph = B.walkPhase();
       walkBob = Math.abs(Math.sin(ph)) * 2.5;
-      walkHip = Math.sin(ph * 2) * 2;
-      walkLeg = Math.sin(ph);
     }
     const peckBob = peck ? Math.sin(t * 0.018) * 4 : 0;
     const sitDrop = sit ? 22 : 0;
+    const cowerSquash = cowering ? 0.85 : 1;
     const celebrateBounce = celebrating ? Math.abs(Math.sin(t * 0.012)) * 14 : 0;
+    const danceBounce = dancing ? Math.abs(Math.sin(t * 0.018)) * 18 : 0;
+    const danceRoll = dancing ? Math.sin(t * 0.008) * 0.18 : 0;
+    const bowForward = bowing ? Math.min(1, (t * 0.005) % 2) * 0 : 0;
+    const surpriseJerk = surprised ? -Math.max(0, 1 - ((t * 0.01) % 1)) * 12 : 0;
+    const sneezeJerk = sneezing ? Math.sin(t * 0.04) * 6 : 0;
 
     // intensity-driven micro-shake
     const sx = (Math.random() - 0.5) * s.intensity * 14;
     const sy = (Math.random() - 0.5) * s.intensity * 14;
 
     ctx.save();
-    ctx.translate(sx, sy + breathe + walkBob + sitDrop - celebrateBounce);
-    ctx.scale(facing, 1);
+    ctx.translate(sx + sneezeJerk, sy + breathe + walkBob + sitDrop - celebrateBounce - danceBounce + surpriseJerk);
+    ctx.scale(facing * cowerSquash, cowerSquash);
+    ctx.rotate(danceRoll);
 
     // shadow
     ctx.fillStyle = 'rgba(20,5,35,0.45)';
@@ -195,19 +209,37 @@
     }
     ctx.restore();
 
-    // wings
-    drawWing(-U*0.55, -U*0.05, t, -1);
-    drawWing( U*0.55, -U*0.05, t,  1);
+    // wings (animated per pose)
+    const wingOverride = {
+      waving:     { right:  Math.sin(t * 0.022) * 1.2 + 1.0, left:  0 },
+      stretching: { right:  -1.4, left: -1.4 },                  // both wings out
+      dancing:    { right:  Math.sin(t * 0.020) * 0.8, left:  -Math.sin(t * 0.020) * 0.8 },
+      bowing:     { right:  0.5, left:  0.5 },
+      preening:   { right:  Math.sin(t * 0.01) * 0.4 + 0.6, left: 0.0 },
+      cowering:   { right:  1.4, left: -1.4 },                   // wings wrap inward
+      surprised:  { right:  -1.6, left:  1.6 },                  // both wings up shocked
+    }[pose];
+    drawWing(-U*0.55, -U*0.05, t, -1, wingOverride && wingOverride.left);
+    drawWing( U*0.55, -U*0.05, t,  1, wingOverride && wingOverride.right);
 
     // tail feathers
     drawTail(-U*0.7, -U*0.1, t);
 
-    // neck + head — peck dips way down, sleep tilts back, look turns
+    // neck + head — varied by pose
     let headTilt;
-    if(peck) headTilt = 1.3;
-    else if(sleep) headTilt = -0.6;
+    if(peck)            headTilt = 1.3;
+    else if(sleep)      headTilt = -0.6;
+    else if(yawning)    headTilt = -0.4;
+    else if(stretching) headTilt = -1.0;
+    else if(bowing)     headTilt = 0.9;
+    else if(cowering)   headTilt = 1.4;
+    else if(surprised) headTilt = -0.3;
     else if(pose === 'looking') headTilt = Math.sin(t * 0.003) * 0.4;
-    else headTilt = Math.atan2(s.mouse.y - 0.5, s.mouse.x - 0.5 + 4) * 0.3;
+    else if(dancing)    headTilt = Math.sin(t * 0.014) * 0.5;
+    else {
+      const look = (window.Brain && window.Brain.headLook && window.Brain.headLook()) || { x: 0, y: 0 };
+      headTilt = (look.x * 0.6) + (look.y * 0.3);
+    }
     const headX = Math.cos(headTilt - Math.PI/2) * U*0.7;
     const headY = Math.sin(headTilt - Math.PI/2) * U*0.7 + (peck ? 30 : 0);
 
@@ -221,7 +253,24 @@
     ctx.stroke();
     ctx.restore();
 
-    drawHead(headX, headY - U*0.5, headTilt, t, U);
+    drawHead(headX, headY - U*0.5, headTilt, t, U, pose);
+
+    // sneeze puff
+    if(sneezing){
+      ctx.save();
+      ctx.translate(headX + U*0.4, headY - U*0.45);
+      ctx.fillStyle = 'rgba(255,255,255,.75)';
+      for(let i=0;i<5;i++){
+        ctx.beginPath();
+        ctx.arc(i*5, Math.sin(i)*3, 3 + Math.random(), 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // greeting sparkles when waving
+    if(waving && Math.random() < 0.25){
+      spawnSparkle(headX + (Math.random()-0.5)*30, headY - U*0.7);
+    }
 
     // zzz when sleeping
     if(sleep){
@@ -273,9 +322,11 @@
     ctx.restore();
   }
 
-  function drawWing(x, y, t, side){
+  function drawWing(x, y, t, side, override){
     const sleep = s.pose === 'sleeping';
-    const flap = sleep ? 0.2 : Math.sin(t * 0.012 + side) * (0.3 + s.intensity * 1.1);
+    let flap;
+    if(override !== undefined && override !== null) flap = override;
+    else flap = sleep ? 0.2 : Math.sin(t * 0.012 + side) * (0.3 + s.intensity * 1.1);
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(flap * side);
@@ -318,8 +369,12 @@
     ctx.restore();
   }
 
-  function drawHead(x, y, tilt, t, U){
-    const sleep = s.pose === 'sleeping';
+  function drawHead(x, y, tilt, t, U, pose){
+    pose = pose || s.pose || 'idle';
+    const sleep = pose === 'sleeping';
+    const yawning = pose === 'yawning';
+    const surprised = pose === 'surprised';
+    const stretching = pose === 'stretching';
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(tilt * 0.5);
@@ -361,9 +416,11 @@
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // beak
+    // beak — yawning opens wide, sneezing trembles
     ctx.fillStyle = '#ffb340';
-    const beakOpen = (s.actionFlash && s.actionFlash.kind === 'feed') ? 6 : 0;
+    let beakOpen = (s.actionFlash && s.actionFlash.kind === 'feed') ? 6 : 0;
+    if(yawning) beakOpen = 18;
+    if(pose === 'sneezing') beakOpen = Math.abs(Math.sin(t * 0.05)) * 8;
     ctx.beginPath();
     ctx.moveTo(28, 2);
     ctx.lineTo(50 + Math.sin(t*0.02)*2, 6);
@@ -373,24 +430,38 @@
     ctx.fillStyle = '#e08a20';
     ctx.beginPath();
     ctx.moveTo(28, 8);
-    ctx.lineTo(46, 12);
+    ctx.lineTo(46, 12 + beakOpen * 0.5);
     ctx.lineTo(28, 15 + beakOpen);
     ctx.closePath();
     ctx.fill();
+    // dark mouth when yawning
+    if(beakOpen > 8){
+      ctx.fillStyle = '#1a0c1c';
+      ctx.beginPath();
+      ctx.moveTo(30, 6 + beakOpen * 0.2);
+      ctx.lineTo(42, 9);
+      ctx.lineTo(30, 13 + beakOpen * 0.7);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-    // eyes
-    drawEye(12, -4, t, sleep);
-    drawEye(-16, -2, t, sleep);
+    // eyes — closed when sleeping or yawning; bigger when surprised; blink
+    const eyeClosed = sleep || yawning;
+    const eyeBig = surprised ? 1.4 : (stretching ? 1.1 : 1);
+    const blink = window.Brain ? window.Brain.blinkOpen() : 1;
+    drawEye(12, -4, t, eyeClosed, eyeBig, blink);
+    drawEye(-16, -2, t, eyeClosed, eyeBig, blink);
 
     ctx.restore();
   }
 
-  function drawEye(ex, ey, t, sleep){
+  function drawEye(ex, ey, t, sleep, sizeMult, blink){
+    sizeMult = sizeMult || 1;
+    blink = blink === undefined ? 1 : blink;
     ctx.save();
     ctx.translate(ex, ey);
 
-    if(sleep){
-      // closed eye — single line
+    if(sleep || blink < 0.3){
       ctx.strokeStyle = '#3a3458';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -400,10 +471,11 @@
       return;
     }
 
-    // sclera
+    // sclera with size + blink (vertical compression)
+    const r = 8 * sizeMult;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(0, 0, 8, 0, Math.PI*2);
+    ctx.ellipse(0, 0, r, r * blink, 0, 0, Math.PI*2);
     ctx.fill();
 
     // pupil drifts toward mouse when calm; spins fast when insane

@@ -55,9 +55,20 @@
       variantName: null,
       variantTagline: null,
       // shop / progression
-      coins: 15,            // starter so you can buy a lamp right away
+      coins: 15,
       inventory: [],
       lastCoinTickAt: Date.now(),
+      // personality: traits drift based on how the player treats the pet.
+      // Range -100..+100. Computed from cumulative interaction history.
+      personality: {
+        bold: 0,           // bold ←→ shy
+        affection: 0,      // affectionate ←→ aloof
+        calm: 0,           // calm ←→ anxious
+        playful: 0,        // playful ←→ lazy
+        cheer: 0,          // cheerful ←→ grumpy
+      },
+      // rolling memory of recent treatment for the brain to react to
+      lastInteractionAt: Date.now(),
     };
   }
 
@@ -164,6 +175,18 @@
       pet.cleanliness = clamp(pet.cleanliness - 8);
     }
 
+    // ----- personality drifts from neglect / suffering -----
+    const sinceLast = (now - (pet.lastInteractionAt || pet.bornAt)) / 1000;
+    if(sinceLast > 600){       // 10+ min without interaction
+      // every full hour of being ignored, drift toward shy/aloof/grumpy
+      shift('bold',      -dt * 0.003);
+      shift('affection', -dt * 0.004);
+      shift('cheer',     -dt * 0.002);
+    }
+    if(pet.sanity < 30) shift('calm', -dt * 0.004);
+    if(pet.hunger < 25) shift('cheer', -dt * 0.003);
+    if(pet.happiness < 25) shift('cheer', -dt * 0.003);
+
     // chance of laying an egg if happy (henhouse multiplier)
     const layMult = eff.eggLayChanceMult ?? 1;
     if(!pet.isSleeping && pet.happiness > 70 && pet.hunger > 50 && Math.random() < hours * 0.4 * layMult){
@@ -181,6 +204,16 @@
   }
 
   function clamp(v){ return Math.max(0, Math.min(100, v)); }
+  function clampP(v){ return Math.max(-100, Math.min(100, v)); }
+
+  // ---- personality drifts -------------------------------------------------
+  function shift(trait, amount){
+    if(!pet || !pet.personality) return;
+    pet.personality[trait] = clampP((pet.personality[trait] || 0) + amount);
+  }
+  function bumpInteraction(){
+    if(pet) pet.lastInteractionAt = Date.now();
+  }
 
   // ---- HATCH ----
   function hatch(){
@@ -233,11 +266,16 @@
   }
   function feed(){
     if(!pet || pet.isDead || pet.isSleeping) return false;
+    // feeding while still well-fed = casual; feeding when starving = rescue
+    const wasHungry = pet.hunger < 30;
     pet.hunger = clamp(pet.hunger + 35);
     pet.happiness = clamp(pet.happiness + 5);
     pet.timesFed++;
     pet.onFeed = true;
     awardCoin('feed');
+    shift('calm', wasHungry ? -1 : 2);
+    shift('cheer', 1);
+    bumpInteraction();
     save();
     return true;
   }
@@ -249,6 +287,10 @@
     pet.timesPlayed++;
     pet.onPlay = true;
     awardCoin('play');
+    shift('playful', 3);
+    shift('bold', 2);
+    shift('cheer', 2);
+    bumpInteraction();
     save();
     return true;
   }
@@ -259,15 +301,21 @@
     pet.sanity = clamp(pet.sanity + 4);
     pet.onPet = true;
     awardCoin('pet');
+    shift('affection', 3);
+    shift('calm', 2);
+    bumpInteraction();
     save();
     return true;
   }
   function clean(){
     if(!pet || pet.isDead) return false;
+    const wasFiltyrich = pet.cleanliness > 60;
     pet.poops = 0;
     pet.cleanliness = clamp(pet.cleanliness + 40);
     pet.happiness = clamp(pet.happiness + 3);
     awardCoin('clean');
+    shift('affection', wasFiltyrich ? 2 : 1);
+    bumpInteraction();
     save();
     return true;
   }
@@ -363,6 +411,28 @@
     return `the egg waits.`;
   }
 
+  // ---- personality readouts ----
+  function personality(){ return pet ? pet.personality : null; }
+  function personalityLabel(){
+    if(!pet) return '';
+    const p = pet.personality || {};
+    const dominant = Object.entries(p)
+      .filter(([k,v]) => Math.abs(v) >= 8)
+      .sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+    if(!dominant) return 'still figuring itself out';
+    const [trait, val] = dominant;
+    const positive = val > 0;
+    const labels = {
+      bold:      [positive ? 'bold' : 'shy',           positive ? 'fearless' : 'skittish'],
+      affection: [positive ? 'affectionate' : 'aloof', positive ? 'devoted' : 'distant'],
+      calm:      [positive ? 'calm' : 'anxious',       positive ? 'serene' : 'jittery'],
+      playful:   [positive ? 'playful' : 'lazy',       positive ? 'energetic' : 'sluggish'],
+      cheer:     [positive ? 'cheerful' : 'grumpy',    positive ? 'sunny' : 'sour'],
+    };
+    const intensity = Math.abs(val) >= 40 ? 1 : 0;
+    return labels[trait][intensity];
+  }
+
   window.Pet = {
     init,
     get(){ return pet; },
@@ -371,6 +441,7 @@
     feed, play, clean, sleep, medicate, pet: pet_,
     reset, stage, vibe, ageSeconds,
     isEgg, eggAction, forceHatch, eggVibe,
+    personality, personalityLabel,
     clearTransients(){
       if(!pet) return;
       pet.onFeed = pet.onPlay = pet.onPet = pet.onMeds = pet.onLayEgg = pet.onHatch = false;
