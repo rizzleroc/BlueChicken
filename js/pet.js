@@ -253,9 +253,18 @@
       pet = freshPet(name);
       save();
     } else {
-      // catch up on offline decay
-      tickElapsed(Date.now());
-      save();
+      // migrate old saves (pre-egg) to the new format
+      if(!pet.version || pet.version < 2){
+        // user had a pre-egg chicken — convert it back to an egg so they
+        // get to experience the hatch flow
+        const oldName = pet.name;
+        pet = freshPet(oldName);
+        save();
+      } else {
+        // catch up on offline decay
+        tickElapsed(Date.now());
+        save();
+      }
     }
     return pet;
   }

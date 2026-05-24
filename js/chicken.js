@@ -110,16 +110,38 @@
   // ----- chicken drawing -----
   function drawChicken(t, scale){
     scale = scale || 1;
-    const U = 100 * scale;        // base unit
+    const U = 100 * scale;
     const breathe = Math.sin(t * 0.003) * 3;
-    const sleep = s.pose === 'sleeping';
+
+    // pull pose + facing from Brain when available
+    const B = window.Brain;
+    const pose = B ? B.pose() : 'idle';
+    const facing = B ? B.facing() : 1;
+    const sleep = pose === 'sleeping';
+    const peck = pose === 'pecking';
+    const sit = pose === 'sitting' || sleep;
+    const walking = pose === 'walking';
+    const celebrating = pose === 'celebrating';
+
+    // walking bob from leg cycle phase
+    let walkBob = 0, walkHip = 0, walkLeg = 0;
+    if(walking && B){
+      const ph = B.walkPhase();
+      walkBob = Math.abs(Math.sin(ph)) * 2.5;
+      walkHip = Math.sin(ph * 2) * 2;
+      walkLeg = Math.sin(ph);
+    }
+    const peckBob = peck ? Math.sin(t * 0.018) * 4 : 0;
+    const sitDrop = sit ? 22 : 0;
+    const celebrateBounce = celebrating ? Math.abs(Math.sin(t * 0.012)) * 14 : 0;
 
     // intensity-driven micro-shake
     const sx = (Math.random() - 0.5) * s.intensity * 14;
     const sy = (Math.random() - 0.5) * s.intensity * 14;
 
     ctx.save();
-    ctx.translate(sx, sy + breathe);
+    ctx.translate(sx, sy + breathe + walkBob + sitDrop - celebrateBounce);
+    ctx.scale(facing, 1);
 
     // shadow
     ctx.fillStyle = 'rgba(20,5,35,0.45)';
@@ -127,10 +149,11 @@
     ctx.ellipse(0, U*0.5, U*0.9, U*0.12, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // legs (tucked when sleeping)
-    if(!sleep){
-      drawLeg(-U*0.22, 0, t, -1);
-      drawLeg( U*0.22, 0, t,  1);
+    // legs (tucked when sitting / sleeping)
+    if(!sit){
+      const ph = walking && B ? B.walkPhase() : 0;
+      drawLeg(-U*0.22, 0, t, -1, walking ? Math.sin(ph) : 0);
+      drawLeg( U*0.22, 0, t,  1, walking ? -Math.sin(ph) : 0);
     }
 
     // ---- body — colored by variant ----
@@ -179,10 +202,14 @@
     // tail feathers
     drawTail(-U*0.7, -U*0.1, t);
 
-    // neck + head
-    const headTilt = sleep ? -0.6 : Math.atan2(s.mouse.y - 0.5, s.mouse.x - 0.5 + 4) * 0.3;
+    // neck + head — peck dips way down, sleep tilts back, look turns
+    let headTilt;
+    if(peck) headTilt = 1.3;
+    else if(sleep) headTilt = -0.6;
+    else if(pose === 'looking') headTilt = Math.sin(t * 0.003) * 0.4;
+    else headTilt = Math.atan2(s.mouse.y - 0.5, s.mouse.x - 0.5 + 4) * 0.3;
     const headX = Math.cos(headTilt - Math.PI/2) * U*0.7;
-    const headY = Math.sin(headTilt - Math.PI/2) * U*0.7;
+    const headY = Math.sin(headTilt - Math.PI/2) * U*0.7 + (peck ? 30 : 0);
 
     ctx.save();
     ctx.strokeStyle = '#cdd6f4';
@@ -216,25 +243,27 @@
     ctx.restore();
   }
 
-  function drawLeg(x, y, t, side){
+  function drawLeg(x, y, t, side, lift){
+    lift = lift || 0;
     const wob = Math.sin(t * 0.006 + side) * (2 + s.intensity * 6);
     ctx.save();
     ctx.translate(x, y);
     ctx.strokeStyle = '#9aa6c4';
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
+    const liftPx = lift * 14;
     ctx.beginPath();
-    ctx.moveTo(0, 50); ctx.lineTo(wob*0.3, 80);
+    ctx.moveTo(0, 50); ctx.lineTo(wob*0.3, 80 - Math.max(0, liftPx));
     ctx.stroke();
     ctx.fillStyle = '#ffcd3c';
-    ctx.beginPath(); ctx.arc(wob*0.3, 80, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(wob*0.3, 80 - Math.max(0, liftPx), 4, 0, Math.PI*2); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(wob*0.3, 80); ctx.lineTo(wob*0.6 - side*4, 110);
+    ctx.moveTo(wob*0.3, 80 - Math.max(0, liftPx)); ctx.lineTo(wob*0.6 - side*4, 110 - Math.max(0, liftPx));
     ctx.stroke();
     // foot
     ctx.strokeStyle = '#ffcd3c';
     ctx.lineWidth = 3;
-    const fx = wob*0.6 - side*4, fy = 110;
+    const fx = wob*0.6 - side*4, fy = 110 - Math.max(0, liftPx);
     for(let i=-1;i<=1;i++){
       ctx.beginPath();
       ctx.moveTo(fx, fy);
@@ -673,9 +702,17 @@
     // ---- EGG MODE: draw the unhatched egg and return ----
     if(s.isEgg){
       drawEgg(t);
-      // egg-mode particles still tick
       tickParticles(t);
       return;
+    }
+
+    // ---- chicken roams the world via Brain ----
+    if(window.Brain){
+      const groundY = s.h * 0.83;
+      const bx = window.Brain.x();
+      // map normalized 0.15..0.85 to screen
+      s.cx = s.w * (0.15 + bx * 0.7);
+      s.cy = groundY - 22;
     }
 
     // draw eggs the chicken has laid (behind chicken)
@@ -722,8 +759,56 @@
     // particles (hearts, sparkles, grain)
     tickParticles(t);
 
+    // speech bubble (drawn over everything)
+    drawSpeechBubble(t);
+
     // hatch ceremony overlay
     drawHatchBurst(t);
+  }
+
+  // ---- speech bubble ----
+  function drawSpeechBubble(t){
+    const B = window.Brain;
+    if(!B) return;
+    const text = B.thought();
+    if(!text) return;
+    const cx = s.cx;
+    const cy = s.cy - 160;
+    ctx.save();
+    ctx.font = 'italic 16px "Instrument Serif", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const metrics = ctx.measureText(text);
+    const padX = 14, padY = 9;
+    const w = Math.min(360, metrics.width + padX * 2);
+    const h = 30;
+    // bubble bg
+    ctx.fillStyle = 'rgba(20, 12, 32, 0.92)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    const x = cx - w / 2, y = cy - h / 2;
+    const r = 15;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // little tail down toward chicken
+    ctx.fillStyle = 'rgba(20, 12, 32, 0.92)';
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, y + h);
+    ctx.lineTo(cx, y + h + 10);
+    ctx.lineTo(cx + 6, y + h);
+    ctx.closePath();
+    ctx.fill();
+    // text
+    ctx.fillStyle = '#f7f3ff';
+    ctx.fillText(text, cx, y + h / 2);
+    ctx.restore();
   }
 
   // ---- API ----

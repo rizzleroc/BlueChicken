@@ -64,6 +64,10 @@
     PsyAudio.start();
     PsyAudio.setMuted(true);
     syncPhaseUI();
+    // try to wire up an on-device LLM (no-op if not available)
+    if(window.CluckLLM) window.CluckLLM.init().then(ok => {
+      console.log('CLUCKBOT brain backend:', window.CluckLLM.backend());
+    });
   }
 
   function syncPhaseUI(){
@@ -291,6 +295,17 @@
       else ChickenPet.setPose('idle');
     }
 
+    // BRAIN: autonomous behavior + grain particles when pecking
+    if(window.Brain){
+      window.Brain.tick(t, pet);
+      if(window.Brain.pose() === 'pecking' && Math.random() < 0.18){
+        ChickenPet.reactFeed(t);
+      }
+    }
+
+    // periodic thought generation (every ~16s, async)
+    maybeThink(t, pet);
+
     PsyShader.tick(t);
     ChickenPet.render(t);
 
@@ -348,6 +363,27 @@
     el.style.width = Math.round(value) + '%';
     const parent = el.closest('.need');
     if(parent) parent.classList.toggle('low', value < 30);
+  }
+
+  // ---- LLM thought scheduling ----
+  let nextThinkAt = 4000;        // first thought a few seconds in
+  let thinking = false;
+  function maybeThink(t, pet){
+    if(thinking || !window.CluckLLM || !window.Brain) return;
+    if(t < nextThinkAt) return;
+    // skip for dead / egg
+    if(!pet || pet.isDead || pet.egg){
+      nextThinkAt = t + 6000; return;
+    }
+    thinking = true;
+    window.CluckLLM.thoughtFor(pet).then(({ text, mood }) => {
+      if(text) window.Brain.think(text, 5500);
+      nextThinkAt = t + 12000 + Math.random() * 8000;
+      thinking = false;
+    }).catch(() => {
+      nextThinkAt = t + 8000;
+      thinking = false;
+    });
   }
 
 })();
