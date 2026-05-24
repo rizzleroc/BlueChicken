@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0710" />
+  <title>UNIT-7 / Operation: Featherbreak</title>
+  <meta name="description" content="A psychedelic robot pushes a chicken to the brink of cosmic clarity. A fully visual web experience." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- WebGL psychedelic plate -->
+  <canvas id="bg" aria-hidden="true"></canvas>
+
+  <!-- Particle field + chicken sprite -->
+  <canvas id="fg" aria-hidden="true"></canvas>
+
+  <!-- Grain overlay -->
+  <div id="grain" aria-hidden="true"></div>
+
+  <!-- ===================== INTRO ===================== -->
+  <section id="intro" class="screen">
+    <header class="hud">
+      <span class="hud-left">
+        <span class="dot"></span>
+        UNIT-7 · Featherbreak Protocol
+      </span>
+      <span class="hud-right">v0.7.3 · jbortnick lab</span>
+    </header>
+
+    <div class="intro-stack">
+      <p class="kicker">an experiment in synthetic poultry consciousness</p>
+      <h1 class="title">
+        <span class="title-row"><span class="word w1">A robot</span></span>
+        <span class="title-row"><em class="word w2">drives a chicken</em></span>
+        <span class="title-row"><span class="word w3">completely</span> <span class="word w4">insane.</span></span>
+      </h1>
+      <p class="lede">
+        Six oscillators. One bird. Zero ethics committees. <br/>
+        Press the button. Hold still. Try not to cluck back.
+      </p>
+
+      <button id="begin" class="cta" type="button" aria-label="Begin experience">
+        <span class="cta-label">
+          <span>Begin transmission</span>
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="cta-ring" aria-hidden="true"></span>
+      </button>
+
+      <ul class="meta">
+        <li><span>EST</span> 2026</li>
+        <li><span>WEBGL</span> kaleidoscope</li>
+        <li><span>AUDIO</span> generative</li>
+        <li><span>CAUTION</span> photosensitive</li>
+      </ul>
+    </div>
+
+    <footer class="foot">
+      <span>scroll, click, drag — the chicken responds</span>
+      <span class="blink">●</span>
+    </footer>
+  </section>
+
+  <!-- ===================== EXPERIENCE HUD ===================== -->
+  <section id="stage" class="screen hidden" aria-hidden="true">
+    <header class="hud hud-stage">
+      <span class="hud-left">
+        <span class="dot live"></span>
+        <span id="phaseLabel">PHASE 01 · ONBOARDING</span>
+      </span>
+      <span class="hud-right">
+        <button id="muteBtn" class="ghost" type="button">SOUND: OFF</button>
+        <button id="exitBtn" class="ghost" type="button">↺ RESET</button>
+      </span>
+    </header>
+
+    <aside class="readouts" aria-hidden="true">
+      <div class="readout"><label>SANITY</label><div class="bar"><i id="sanityBar"></i></div></div>
+      <div class="readout"><label>FEATHER FLUX</label><div class="bar"><i id="fluxBar"></i></div></div>
+      <div class="readout"><label>EGG ENTROPY</label><div class="bar"><i id="entropyBar"></i></div></div>
+    </aside>
+
+    <div class="bigtext" id="bigtext"></div>
+
+    <footer class="foot foot-stage">
+      <span id="hint">move your mouse · click to pulse · press SPACE to escalate</span>
+    </footer>
+  </section>
+
+  <!-- shaders -->
+  <script type="x-shader/x-vertex" id="vs">
+    attribute vec2 a_position;
+    varying vec2 v_uv;
+    void main(){
+      v_uv = a_position * 0.5 + 0.5;
+      gl_Position = vec4(a_position, 0.0, 1.0);
+    }
+  </script>
+
+  <script type="x-shader/x-fragment" id="fs">
+    precision highp float;
+    varying vec2 v_uv;
+    uniform vec2  u_res;
+    uniform float u_time;
+    uniform float u_intensity;   // 0..1 escalates as chicken loses it
+    uniform vec2  u_mouse;       // 0..1
+    uniform float u_pulse;       // 0..1 transient on click
+    uniform float u_hue;         // base hue shift
+
+    // hsv -> rgb
+    vec3 hsv2rgb(vec3 c){
+      vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+      vec3 p = abs(fract(c.xxx + K.xyz)*6.0 - K.www);
+      return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+    }
+
+    // 2d rotation
+    mat2 rot(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+    // smooth pseudo-noise
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      float a = hash(i);
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      vec2 u = f*f*(3.0 - 2.0*f);
+      return mix(a,b,u.x) + (c-a)*u.y*(1.0 - u.x) + (d-b)*u.x*u.y;
+    }
+
+    void main(){
+      vec2 uv = (gl_FragCoord.xy - 0.5*u_res) / min(u_res.x, u_res.y);
+
+      // mouse parallax warp
+      vec2 m = (u_mouse - 0.5) * 1.4;
+      uv += m * 0.15 * (0.4 + u_intensity);
+
+      // kaleidoscope segments scale with intensity
+      float segs = mix(6.0, 14.0, u_intensity);
+      float a = atan(uv.y, uv.x);
+      float r = length(uv);
+      a = mod(a, 6.28318 / segs);
+      a = abs(a - 3.14159 / segs);
+      vec2 kuv = vec2(cos(a), sin(a)) * r;
+
+      // swirl
+      float t = u_time * (0.12 + u_intensity * 0.45);
+      kuv *= rot(t * 0.5 + r * (1.5 + u_intensity * 3.0));
+
+      // domain warp w/ noise
+      float n = noise(kuv * (3.0 + u_intensity*5.0) + t);
+      kuv += vec2(cos(n*6.283), sin(n*6.283)) * (0.12 + u_intensity*0.25);
+
+      // concentric rings
+      float rings = sin(r * (10.0 + u_intensity*22.0) - t*3.0 + n*6.283);
+      rings = smoothstep(0.0, 0.9, rings);
+
+      // pulse shockwave on click
+      float pulse = smoothstep(0.6, 0.0, abs(r - u_pulse));
+      pulse *= u_pulse > 0.001 ? 1.0 : 0.0;
+
+      // color
+      float hue = u_hue + n * 0.4 + r * 0.3 + t * 0.05;
+      vec3 col = hsv2rgb(vec3(hue, 0.85, 0.85));
+      col += hsv2rgb(vec3(hue + 0.33 + sin(t)*0.05, 0.9, 0.6)) * rings * 0.6;
+      col += vec3(1.0, 0.95, 0.85) * pulse * 1.5;
+
+      // vignette
+      float v = smoothstep(1.1, 0.2, r);
+      col *= mix(0.15, 1.0, v);
+
+      // fade based on intensity (start subtle)
+      col = mix(vec3(0.03,0.02,0.06), col, 0.35 + u_intensity * 0.65);
+
+      // film-style highlight ramp
+      col = pow(col, vec3(0.92));
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  </script>
+
+  <script src="js/audio.js"></script>
+  <script src="js/shader.js"></script>
+  <script src="js/chicken.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
