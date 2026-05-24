@@ -136,6 +136,22 @@
     }
     brain._lastT = t;
 
+    // long-idle: if the cursor hasn't moved in 60s+ the chicken does a
+    // deliberate stare + breath sigh — "are you still there?"
+    const mouseStillMs = t - (brain.lastMouseAt || t);
+    if(mouseStillMs > 60000 && brain.pose === 'idle' && t - (brain.lastStareAt || 0) > 60000){
+      brain.lastStareAt = t;
+      brain.pose = 'looking';
+      brain.facing = brain.mouseX > (0.15 + brain.x * 0.7) ? 1 : -1;
+      brain.headLookTarget.x = brain.mouseX - 0.5;
+      brain.headLookTarget.y = brain.mouseY - 0.5;
+      brain.poseUntil = t + 2500;
+      brain.nextDecisionAt = brain.poseUntil + 200;
+      if(window.MicroAudio) window.MicroAudio.breath();
+      think('still there?', 3000);
+      return;
+    }
+
     // pending tab-return greeting
     if(brain.pendingGreeting && brain.pose === 'idle'){
       const big = brain.pendingGreeting === 'big';
