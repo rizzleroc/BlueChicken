@@ -83,10 +83,69 @@
       </span>
     </header>
 
+    <!-- LEFT control rig: switches, sliders, dial -->
+    <aside class="rig" aria-label="Operator control rig">
+      <h2 class="rig-title">UNIT-7<span>FEATHERBREAK CONTROL</span></h2>
+
+      <div class="rig-group">
+        <span class="rig-label">CHASSIS</span>
+        <div class="switch" data-toggle="hatched">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span class="switch-text">HATCH BODY</span>
+        </div>
+        <div class="switch" data-toggle="headOff">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span class="switch-text">DETACH HEAD</span>
+        </div>
+        <div class="switch" data-toggle="eyeEject">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span class="switch-text">EJECT EYE</span>
+        </div>
+        <div class="switch" data-toggle="strobe">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+          <span class="switch-text">STROBE</span>
+        </div>
+      </div>
+
+      <div class="rig-group">
+        <span class="rig-label">REALITY</span>
+        <div class="slider" data-slider="fractal">
+          <div class="slider-head">
+            <span class="slider-name">FRACTAL DEPTH</span>
+            <span class="slider-value" data-value-for="fractal">0</span>
+          </div>
+          <input type="range" min="0" max="6" step="1" value="0" />
+        </div>
+        <div class="slider" data-slider="gravity">
+          <div class="slider-head">
+            <span class="slider-name">GRAVITY</span>
+            <span class="slider-value" data-value-for="gravity">0.4</span>
+          </div>
+          <input type="range" min="0" max="100" step="1" value="40" />
+        </div>
+        <div class="slider" data-slider="warp">
+          <div class="slider-head">
+            <span class="slider-name">SPACE-WARP</span>
+            <span class="slider-value" data-value-for="warp">0%</span>
+          </div>
+          <input type="range" min="0" max="100" step="1" value="0" />
+        </div>
+      </div>
+
+      <div class="rig-actions">
+        <button class="rig-btn" data-action="lay">LAY EGG</button>
+        <button class="rig-btn" data-action="zap">ZAP</button>
+        <button class="rig-btn danger" data-action="meltdown">MELT</button>
+      </div>
+
+      <p class="rig-hint">drag the dial on the chicken to manually set intensity · click the chicken's parts</p>
+    </aside>
+
     <aside class="readouts" aria-hidden="true">
       <div class="readout"><label>SANITY</label><div class="bar"><i id="sanityBar"></i></div></div>
       <div class="readout"><label>FEATHER FLUX</label><div class="bar"><i id="fluxBar"></i></div></div>
       <div class="readout"><label>EGG ENTROPY</label><div class="bar"><i id="entropyBar"></i></div></div>
+      <div class="readout"><label>EGGS LAID</label><div class="counter" id="eggCount">000</div></div>
     </aside>
 
     <div class="bigtext" id="bigtext"></div>

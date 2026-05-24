@@ -56,6 +56,40 @@
 
   function onClick(e){
     if(!state.running) return;
+
+    // ignore clicks on UI elements
+    const hitUi = e.target && e.target.closest && e.target.closest('.rig, .readouts, .hud');
+    if(hitUi) return;
+
+    // hit-test the chicken parts first
+    const part = Chicken.hitTest(e.clientX, e.clientY);
+    if(part === 'beak'){
+      PsyAudio.pluckCluck(); PsyAudio.pluckCluck();
+      Chicken.sparkAt(e.clientX, e.clientY);
+      return;
+    }
+    if(part === 'head'){
+      // toggle head detach
+      const cur = !!state._uiHeadOff;
+      state._uiHeadOff = !cur;
+      Chicken.toggle('headOff', !cur);
+      syncSwitch('headOff', !cur);
+      return;
+    }
+    if(part === 'body'){
+      const cur = !!state._uiHatched;
+      state._uiHatched = !cur;
+      Chicken.toggle('hatched', !cur);
+      syncSwitch('hatched', !cur);
+      Chicken.burstFeathers(12);
+      return;
+    }
+    if(part === 'dial'){
+      // dial click without drag — just pulse
+      PsyShader.triggerPulse(0.6);
+      return;
+    }
+
     PsyShader.triggerPulse(0.5 + Math.random()*0.3);
     Chicken.glitch(0.6);
     Chicken.shake(0.5);
@@ -231,9 +265,127 @@
   // scroll wheel = manual escalation knob
   window.addEventListener('wheel', (e) => {
     if(!state.running) return;
+    if(e.target && e.target.closest && e.target.closest('.rig')) return;
     state.autoEscalate = false;
     state.targetIntensity = Math.max(0, Math.min(1, state.targetIntensity + (e.deltaY > 0 ? 0.04 : -0.04)));
     Chicken.glitch(0.2);
   }, { passive: true });
+
+  // ===== dial drag (manual intensity by twist) =====
+  let dragging = false;
+  let dragStartAngle = 0;
+  let dragStartIntensity = 0;
+  function angleFrom(dial, x, y){
+    return Math.atan2(y - dial.cy, x - dial.cx);
+  }
+  window.addEventListener('mousedown', (e) => {
+    if(!state.running) return;
+    const dial = Chicken.dialAt && Chicken.dialAt();
+    if(!dial) return;
+    const dx = e.clientX - dial.cx, dy = e.clientY - dial.cy;
+    if(dx*dx + dy*dy <= dial.r * dial.r){
+      dragging = true;
+      dragStartAngle = angleFrom(dial, e.clientX, e.clientY);
+      dragStartIntensity = state.targetIntensity;
+      state.autoEscalate = false;
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('mousemove', (e) => {
+    if(!dragging) return;
+    const dial = Chicken.dialAt && Chicken.dialAt();
+    if(!dial) return;
+    const a = angleFrom(dial, e.clientX, e.clientY);
+    let d = a - dragStartAngle;
+    // wrap to (-pi, pi)
+    if(d > Math.PI) d -= Math.PI*2;
+    if(d < -Math.PI) d += Math.PI*2;
+    // 1 full revolution = 1.0 intensity
+    state.targetIntensity = Math.max(0, Math.min(1, dragStartIntensity + d / (Math.PI * 1.5)));
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+
+  // ===== control rig wiring =====
+  const switchEls = {};
+  document.querySelectorAll('.switch').forEach(el => {
+    const name = el.getAttribute('data-toggle');
+    switchEls[name] = el;
+    el.addEventListener('click', () => {
+      const on = !el.classList.contains('on');
+      el.classList.toggle('on', on);
+      Chicken.toggle(name, on);
+      // sync hidden state mirror so chicken-body click can also reflect
+      if(name === 'hatched') state._uiHatched = on;
+      if(name === 'headOff') state._uiHeadOff = on;
+      PsyAudio.pluckCluck();
+      Chicken.shake(0.2);
+    });
+  });
+  function syncSwitch(name, on){
+    const el = switchEls[name];
+    if(el) el.classList.toggle('on', on);
+  }
+
+  // sliders
+  document.querySelectorAll('.slider').forEach(s => {
+    const name = s.getAttribute('data-slider');
+    const input = s.querySelector('input');
+    const value = s.querySelector('.slider-value');
+    const apply = () => {
+      const v = +input.value;
+      if(name === 'fractal'){ Chicken.setFractal(v); value.textContent = String(v); }
+      else if(name === 'gravity'){ Chicken.setGravity(v / 100); value.textContent = (v/100).toFixed(2); }
+      else if(name === 'warp'){ Chicken.setWarp(v / 100); value.textContent = v + '%'; }
+    };
+    input.addEventListener('input', apply);
+    apply();
+  });
+
+  // action buttons
+  document.querySelectorAll('.rig-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      const a = b.getAttribute('data-action');
+      if(a === 'lay'){
+        Chicken.layEgg();
+        PsyAudio.pluckCluck();
+      } else if(a === 'zap'){
+        PsyShader.triggerPulse(0.8);
+        Chicken.glitch(0.7);
+        Chicken.shake(0.6);
+        Chicken.burstFeathers(16);
+        PsyAudio.bigPulse();
+        state.shakeBurst = Math.min(1, (state.shakeBurst || 0) + 0.4);
+      } else if(a === 'meltdown'){
+        Chicken.meltdown();
+        PsyAudio.bigPulse();
+        PsyShader.triggerPulse(1.0);
+        Chicken.panic(1);
+        state.shakeBurst = 1;
+        state.targetIntensity = 1;
+        state.autoEscalate = false;
+        if(switchEls.hatched) switchEls.hatched.classList.add('on');
+        if(switchEls.headOff) switchEls.headOff.classList.add('on');
+        if(switchEls.eyeEject) switchEls.eyeEject.classList.add('on');
+        if(switchEls.strobe) switchEls.strobe.classList.add('on');
+        state._uiHatched = true; state._uiHeadOff = true;
+      }
+    });
+  });
+
+  // egg counter display
+  const eggCountEl = document.getElementById('eggCount');
+  if(eggCountEl){
+    setInterval(() => {
+      eggCountEl.textContent = String(Chicken.eggCount()).padStart(3, '0');
+    }, 200);
+  }
+
+  // make pointer change on hover over chicken parts / dial
+  window.addEventListener('mousemove', (e) => {
+    if(!state.running) return;
+    if(e.target && e.target.closest && e.target.closest('.rig')) return;
+    const part = Chicken.hitTest(e.clientX, e.clientY);
+    document.body.style.cursor = part ? (part === 'dial' ? 'grab' : 'pointer') : '';
+  });
 
 })();
