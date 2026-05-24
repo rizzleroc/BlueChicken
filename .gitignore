@@ -1,0 +1,7 @@
+# Local development artifacts
+node_modules/
+*.log
+
+# Screenshot output from playtest scripts
+*.png
+!docs/*.png
