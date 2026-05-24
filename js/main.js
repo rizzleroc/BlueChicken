@@ -35,6 +35,7 @@
     { t: 22.0, name:'PHASE 04 · OVERDRIVE',    intensity: 0.58, msg:'oh no.' },
     { t: 32.0, name:'PHASE 05 · KALEIDOCLUCK', intensity: 0.78, msg:'we are the chicken' },
     { t: 44.0, name:'PHASE 06 · ENLIGHTENMENT',intensity: 0.95, msg:'the egg sees you' },
+    { t: 58.0, name:'PHASE 07 · TRANSCENDENCE',intensity: 1.00, msg:'cluck. cluck. om.' },
   ];
 
   // ----- mouse / input ----------------------------------------------------
@@ -61,6 +62,7 @@
     Chicken.burstFeathers(8 + Math.floor(state.intensity * 20));
     Chicken.sparkAt(e.clientX, e.clientY);
     PsyAudio.pluckCluck();
+    state.shakeBurst = Math.min(1, (state.shakeBurst || 0) + 0.25);
     state.entropy = Math.min(1, state.entropy + 0.08);
     state.sanity = Math.max(0, state.sanity - 0.05);
     if(state.autoEscalate){
@@ -80,6 +82,7 @@
       state.targetIntensity = Math.min(1, state.targetIntensity + 0.18);
       state.sanity = Math.max(0, state.sanity - 0.18);
       state.entropy = Math.min(1, state.entropy + 0.2);
+      state.shakeBurst = Math.min(1, (state.shakeBurst || 0) + 0.6);
     }
   });
 
@@ -115,6 +118,19 @@
 
     // smooth intensity
     state.intensity += (state.targetIntensity - state.intensity) * 0.03;
+
+    // screen shake at high intensity + on pulse spikes
+    const shakeAmt = state.intensity > 0.5
+      ? (state.intensity - 0.5) * 14 + (state.shakeBurst || 0) * 20
+      : (state.shakeBurst || 0) * 10;
+    if(shakeAmt > 0.1){
+      document.body.style.setProperty('--shake-x', ((Math.random()-0.5) * shakeAmt).toFixed(2) + 'px');
+      document.body.style.setProperty('--shake-y', ((Math.random()-0.5) * shakeAmt).toFixed(2) + 'px');
+    } else {
+      document.body.style.setProperty('--shake-x', '0px');
+      document.body.style.setProperty('--shake-y', '0px');
+    }
+    state.shakeBurst = (state.shakeBurst || 0) * 0.86;
     PsyShader.setIntensity(state.intensity);
     Chicken.setIntensity(state.intensity);
     PsyAudio.setIntensity(state.intensity);

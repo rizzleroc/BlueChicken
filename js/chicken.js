@@ -81,6 +81,9 @@
     const cy = state.h * 0.62;
     const intensity = state.intensity;
 
+    // ---- the OPERATOR (the robot that does this) ----
+    drawOperator(cx, cy, t, intensity);
+
     // mouse follows for head tilt
     const dx = (state.mouse.x - 0.5) * 200;
     const dy = (state.mouse.y - 0.5) * 120;
@@ -112,6 +115,181 @@
       drawChickenAt(gx, gy, scale, dx, dy, t, intensity, i);
       ctx.restore();
     }
+  }
+
+  // ----- THE OPERATOR --------------------------------------------------
+  // A mechanical arm and console hover above the chicken. A dial twists
+  // further open as intensity climbs; cables snake down to the chicken's
+  // antenna; sparks crackle along the wire.
+  function drawOperator(cx, cy, t, intensity){
+    const baseX = cx;
+    const baseY = cy - 280;
+    const wob = Math.sin(t * 0.0014) * 6 + Math.sin(t * 0.0023) * 4;
+    const tiltJitter = (Math.random() - 0.5) * 0.04 * intensity;
+
+    // hanging cables/rails from the top
+    ctx.save();
+    ctx.strokeStyle = 'rgba(170,180,210,.4)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(baseX - 90, 0); ctx.lineTo(baseX - 70, baseY - 20);
+    ctx.moveTo(baseX + 90, 0); ctx.lineTo(baseX + 70, baseY - 20);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // ---- console body ----
+    ctx.save();
+    ctx.translate(baseX + wob, baseY);
+    ctx.rotate(tiltJitter);
+
+    // chassis shadow
+    ctx.fillStyle = 'rgba(8,4,16,.5)';
+    ctx.beginPath();
+    ctx.ellipse(0, 70, 110, 8, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // chassis
+    const chassis = ctx.createLinearGradient(0, -40, 0, 50);
+    chassis.addColorStop(0, '#3a3458');
+    chassis.addColorStop(0.4, '#1f1b34');
+    chassis.addColorStop(1, '#0e0a1a');
+    ctx.fillStyle = chassis;
+    ctx.strokeStyle = 'rgba(255,255,255,.08)';
+    ctx.lineWidth = 1;
+    roundRect(-110, -40, 220, 90, 12);
+    ctx.fill(); ctx.stroke();
+
+    // label
+    ctx.fillStyle = 'rgba(220,210,255,.55)';
+    ctx.font = '600 9px ui-monospace, "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('UNIT-7 // FEATHERBREAK', -100, -22);
+
+    // status LEDs
+    for(let i=0;i<5;i++){
+      const lit = i < (1 + Math.floor(intensity * 4));
+      const hue = i * 50;
+      ctx.fillStyle = lit ? `hsl(${hue}, 100%, 65%)` : 'rgba(255,255,255,.08)';
+      if(lit){ ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8; }
+      ctx.beginPath(); ctx.arc(-90 + i*14, -8, 3, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // big DIAL (twists as intensity rises)
+    const dialX = 55, dialY = 0;
+    // dial well
+    ctx.fillStyle = '#0a0710';
+    ctx.beginPath(); ctx.arc(dialX, dialY, 30, 0, Math.PI*2); ctx.fill();
+    // dial face
+    const dialGrad = ctx.createRadialGradient(dialX-6, dialY-8, 4, dialX, dialY, 28);
+    dialGrad.addColorStop(0, '#e7e1ff');
+    dialGrad.addColorStop(1, '#5a548c');
+    ctx.fillStyle = dialGrad;
+    ctx.beginPath(); ctx.arc(dialX, dialY, 24, 0, Math.PI*2); ctx.fill();
+    // tick marks (0..10)
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.lineWidth = 1.4;
+    for(let i=0;i<=10;i++){
+      const a = -Math.PI*0.75 + (i/10) * Math.PI*1.5;
+      const r1 = 19, r2 = i % 5 === 0 ? 13 : 16;
+      ctx.beginPath();
+      ctx.moveTo(dialX + Math.cos(a)*r1, dialY + Math.sin(a)*r1);
+      ctx.lineTo(dialX + Math.cos(a)*r2, dialY + Math.sin(a)*r2);
+      ctx.stroke();
+    }
+    // dial pointer
+    const dialAngle = -Math.PI*0.75 + intensity * Math.PI*1.5;
+    ctx.strokeStyle = '#ff3c5c';
+    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(dialX, dialY);
+    ctx.lineTo(dialX + Math.cos(dialAngle)*20, dialY + Math.sin(dialAngle)*20);
+    ctx.stroke();
+    // center hub
+    ctx.fillStyle = '#ffcd3c';
+    ctx.beginPath(); ctx.arc(dialX, dialY, 3.5, 0, Math.PI*2); ctx.fill();
+
+    // INTENSITY label under dial
+    ctx.fillStyle = 'rgba(220,210,255,.5)';
+    ctx.font = '500 8px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('INTENSITY', dialX, dialY + 38);
+
+    // ARM — mechanical extension reaching down toward chicken
+    ctx.restore();
+
+    // arm origin world coords
+    const armOX = baseX + wob - 40;
+    const armOY = baseY + 30;
+
+    // chicken-head approximate world coords (top of head)
+    const headTargetX = cx;
+    const headTargetY = cy - 110 + Math.sin(t*0.0025)*4;
+
+    // ARM joints (2-segment IK-ish)
+    const midX = (armOX + headTargetX) / 2 + Math.sin(t*0.002)*8;
+    const midY = (armOY + headTargetY) / 2 + 30 + intensity * 15 * Math.sin(t*0.01);
+
+    ctx.save();
+    ctx.strokeStyle = '#aab2d3';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(armOX, armOY);
+    ctx.lineTo(midX, midY);
+    ctx.lineTo(headTargetX, headTargetY);
+    ctx.stroke();
+
+    // arm joint pivots
+    ctx.fillStyle = '#ffcd3c';
+    [[armOX, armOY], [midX, midY]].forEach(([px,py]) => {
+      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#0a0710';
+      ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ffcd3c';
+    });
+
+    // electrode/claw at the tip
+    ctx.save();
+    ctx.translate(headTargetX, headTargetY);
+    const claw = Math.atan2(headTargetY - midY, headTargetX - midX);
+    ctx.rotate(claw);
+    ctx.fillStyle = '#3a3458';
+    roundRect(-10, -6, 20, 12, 2);
+    ctx.fill();
+    // electrode tip glow
+    ctx.fillStyle = `hsl(${(t*0.3) % 360}, 100%, 65%)`;
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 16 + intensity * 24;
+    ctx.beginPath(); ctx.arc(0, 0, 3.5 + intensity*2, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // crackling sparks along the arm at high intensity
+    if(intensity > 0.3 && Math.random() < 0.5){
+      const seg = Math.random();
+      const sx = armOX + (midX - armOX) * seg + (Math.random()-0.5)*8;
+      const sy = armOY + (midY - armOY) * seg + (Math.random()-0.5)*8;
+      spawnSpark(sx, sy);
+    }
+    if(intensity > 0.5 && Math.random() < 0.6){
+      spawnSpark(headTargetX + (Math.random()-0.5)*10, headTargetY + (Math.random()-0.5)*10);
+    }
+
+    ctx.restore();
+  }
+
+  // helper
+  function roundRect(x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
   }
 
   function drawChickenAt(x, y, scale, dx, dy, t, intensity, idx){
