@@ -25,6 +25,18 @@
     initted: false,
   };
 
+  // Optional background plates. When both day + night load, they replace
+  // the procedural sky+mountains; clouds/stars/rain/ground still animate
+  // on top. If either fails to load, the procedural path stays in place.
+  const plates = {
+    day:   () => window.Assets && window.Assets.load('assets/world/day.png'),
+    night: () => window.Assets && window.Assets.load('assets/world/night.png'),
+  };
+  function platesReady(){
+    const d = plates.day(); const n = plates.night();
+    return !!(d && n && d.ready && n.ready);
+  }
+
   function init(w, h){
     if(state.initted) return;
     state.initted = true;
@@ -110,6 +122,28 @@
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, vw, vh * 0.8);
 
+    // ---- BACKGROUND PLATES (optional, override sky+mountains) ----
+    // Crossfade night→day based on tod. 0 = full night, 1 = full day.
+    // Day is fully on between dawn (0.25) and dusk (0.75), absent at night.
+    const useP = platesReady();
+    if(useP){
+      let dayMix;
+      if(tod < 0.18 || tod > 0.85)      dayMix = 0;
+      else if(tod < 0.32)               dayMix = (tod - 0.18) / 0.14;
+      else if(tod < 0.7)                dayMix = 1;
+      else                              dayMix = 1 - (tod - 0.7) / 0.15;
+      dayMix = Math.max(0, Math.min(1, dayMix));
+      const dampen = 1 - mood * 0.35;
+      const nightImg = plates.night().img;
+      const dayImg   = plates.day().img;
+      ctx.save();
+      ctx.globalAlpha = (1 - dayMix) * dampen;
+      if(ctx.globalAlpha > 0.01) ctx.drawImage(nightImg, 0, 0, vw, vh);
+      ctx.globalAlpha = dayMix * dampen;
+      if(ctx.globalAlpha > 0.01) ctx.drawImage(dayImg,   0, 0, vw, vh);
+      ctx.restore();
+    }
+
     // ---- STARS (visible at night) ----
     if(isNight){
       const starAlpha = isNight ? Math.min(1, Math.abs(tod < 0.5 ? 0.22 - tod : tod - 0.82) * 8) : 0;
@@ -129,7 +163,8 @@
     drawCelestialBody(ctx, t, vw, vh, tod, mood, isNight);
 
     // ---- DISTANT MOUNTAINS (3 layers, parallax-like) ----
-    drawMountains(ctx, vw, vh, tod, mood);
+    // Skip when background plates already provide a real horizon.
+    if(!useP) drawMountains(ctx, vw, vh, tod, mood);
 
     // ---- CLOUDS (drift across) ----
     for(const c of state.clouds){

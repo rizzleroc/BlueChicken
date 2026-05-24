@@ -154,32 +154,43 @@
     const x = staticState.x * vw * 0.7;
     const a = staticState.intensity;
     ctx.save();
-    // distant figure — drone with red eye
     ctx.translate(x, groundY - 110);
     ctx.globalAlpha = a * 0.85;
-    // body
-    ctx.fillStyle = '#0a0710';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 18, 8, 0, 0, Math.PI*2);
-    ctx.fill();
-    // single red eye
-    const pulse = 0.7 + Math.sin(t * 0.005) * 0.3;
-    ctx.fillStyle = `rgba(255, 60, 80, ${a * pulse})`;
-    ctx.shadowColor = 'rgba(255, 40, 60, 0.9)';
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.arc(0, -2, 3.5, 0, Math.PI*2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    // arms/tendrils dangling
-    ctx.strokeStyle = `rgba(40, 20, 40, ${a * 0.6})`;
-    ctx.lineWidth = 1.5;
-    for(let i = -1; i <= 1; i++){
+
+    // If a Static portrait asset is available, use it. Pulsing red glow
+    // still applies behind so the eye reads even with a flat sprite.
+    const portrait = window.Assets && window.Assets.load('assets/static/portrait.png');
+    if(portrait && portrait.ready){
+      const pulse = 0.7 + Math.sin(t * 0.005) * 0.3;
+      ctx.save();
+      ctx.shadowColor = 'rgba(255, 40, 60, 0.9)';
+      ctx.shadowBlur = 18 * pulse;
+      const w = 60, h = 90;
+      ctx.drawImage(portrait.img, -w/2, -h * 0.4, w, h);
+      ctx.restore();
+    } else {
+      // procedural fallback — drone with red eye
+      ctx.fillStyle = '#0a0710';
       ctx.beginPath();
-      ctx.moveTo(i * 8, 4);
-      ctx.bezierCurveTo(i * 8 + Math.sin(t * 0.003 + i) * 4, 18,
-                        i * 6, 30, i * 5, 40 + Math.sin(t * 0.002 + i) * 4);
-      ctx.stroke();
+      ctx.ellipse(0, 0, 18, 8, 0, 0, Math.PI*2);
+      ctx.fill();
+      const pulse = 0.7 + Math.sin(t * 0.005) * 0.3;
+      ctx.fillStyle = `rgba(255, 60, 80, ${a * pulse})`;
+      ctx.shadowColor = 'rgba(255, 40, 60, 0.9)';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(0, -2, 3.5, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = `rgba(40, 20, 40, ${a * 0.6})`;
+      ctx.lineWidth = 1.5;
+      for(let i = -1; i <= 1; i++){
+        ctx.beginPath();
+        ctx.moveTo(i * 8, 4);
+        ctx.bezierCurveTo(i * 8 + Math.sin(t * 0.003 + i) * 4, 18,
+                          i * 6, 30, i * 5, 40 + Math.sin(t * 0.002 + i) * 4);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }

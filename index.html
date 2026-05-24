@@ -77,11 +77,14 @@
     <!-- top bar: name, age, vibe -->
     <header class="topbar">
       <div class="top-left">
-        <h2 class="pet-name" id="petName">CLUCK</h2>
-        <span class="pet-meta">
-          <span class="pet-stage" id="petStage">chick</span>
-          <span class="pet-age"   id="petAge">0s</span>
-        </span>
+        <img id="petPortrait" class="pet-portrait" alt="" hidden />
+        <div class="top-left-text">
+          <h2 class="pet-name" id="petName">CLUCK</h2>
+          <span class="pet-meta">
+            <span class="pet-stage" id="petStage">chick</span>
+            <span class="pet-age"   id="petAge">0s</span>
+          </span>
+        </div>
       </div>
       <div class="top-center">
         <span class="vibe" id="petVibe">CLUCK is fine.</span>
@@ -331,6 +334,7 @@
   <script src="js/audio.js"></script>
   <script src="js/microaudio.js"></script>
   <script src="js/shader.js"></script>
+  <script src="js/assets.js"></script>
   <script src="js/world.js"></script>
   <script src="js/egg.js"></script>
   <script src="js/shop.js"></script>

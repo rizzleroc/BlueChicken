@@ -25,6 +25,7 @@
   const variantTag  = $('#variantTag');
   const variantSwatch = $('#variantSwatch');
   const hatchContinue = $('#hatchContinue');
+  const petPortrait   = $('#petPortrait');
   const eggNeeds    = $('#eggNeeds');
   const chickenNeeds= $('#chickenNeeds');
   const eggActions  = $('#eggActions');
@@ -78,6 +79,7 @@
     chickenActions.hidden = isEgg;
     ChickenPet.setEgg(pet.egg);
     ChickenPet.setVariant(variantFromPet(pet));
+    syncTopbarPortrait();
   }
 
   // Defensive: returns true if the visible UI matches the pet's actual phase.
@@ -94,6 +96,38 @@
   function variantFromPet(pet){
     if(!pet || !pet.variant) return null;
     return (Egg.VARIANTS || []).find(v => v.id === pet.variant) || null;
+  }
+
+  function variantPortraitPath(id){ return id ? `assets/variants/${id}.png` : null; }
+
+  // Top-bar portrait. Hidden until the asset actually loads — falls back to
+  // nothing rather than a broken-image icon. Re-runs whenever variant changes.
+  let topbarVariant = null;
+  function syncTopbarPortrait(){
+    const pet = Pet.get();
+    const id = (pet && !pet.egg && pet.variant) ? pet.variant : null;
+    if(id === topbarVariant) return;
+    topbarVariant = id;
+    if(!id || !window.Assets){
+      petPortrait.hidden = true;
+      petPortrait.removeAttribute('src');
+      return;
+    }
+    const handle = window.Assets.load(variantPortraitPath(id));
+    const apply = () => {
+      if(handle.ready){
+        petPortrait.src = handle.path;
+        petPortrait.hidden = false;
+      } else {
+        petPortrait.hidden = true;
+        petPortrait.removeAttribute('src');
+      }
+    };
+    if(handle.ready || handle.failed) apply();
+    else {
+      handle.img.addEventListener('load',  apply, { once: true });
+      handle.img.addEventListener('error', apply, { once: true });
+    }
   }
 
   // ---- input ----
@@ -362,7 +396,19 @@
     variantTag.textContent = origin;
     const grad = `conic-gradient(${v.colors.concat(v.colors[0]).join(', ')})`;
     variantSwatch.style.setProperty('--swatch', grad);
-    variantSwatch.style.background = grad;
+    variantSwatch.style.removeProperty('--portrait');
+    variantSwatch.classList.remove('has-portrait');
+    if(window.Assets){
+      const handle = window.Assets.load(variantPortraitPath(v.id));
+      const apply = () => {
+        if(handle.ready){
+          variantSwatch.style.setProperty('--portrait', `url("${handle.path}")`);
+          variantSwatch.classList.add('has-portrait');
+        }
+      };
+      if(handle.ready) apply();
+      else handle.img.addEventListener('load', apply, { once: true });
+    }
     hatchModal.classList.remove('hidden');
     hatchModal.setAttribute('aria-hidden', 'false');
     ChickenPet.triggerHatchBurst();
