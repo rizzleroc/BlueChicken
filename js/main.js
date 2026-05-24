@@ -104,6 +104,17 @@
     if(window.Brain) window.Brain.setMouse(mx, my);
   }, { passive: true });
 
+  // when the cursor leaves the window, the chicken looks toward the edge
+  // it left from for a beat, then back. Records last known mouse on the
+  // way out.
+  document.addEventListener('mouseleave', () => {
+    if(window.Brain) {
+      const s = window.Brain.state();
+      // hold gaze at last known edge for ~2s
+      s.gazeLinger = 1.5;
+    }
+  });
+
   habitat.addEventListener('click', () => {
     const pet = Pet.get();
     if(!pet) return;
@@ -199,6 +210,7 @@
   muteBtn.addEventListener('click', () => {
     const m = !PsyAudio.isMuted();
     PsyAudio.setMuted(m);
+    if(window.MicroAudio) window.MicroAudio.setMuted(m);
     muteBtn.textContent = 'SOUND: ' + (m ? 'OFF' : 'ON');
   });
 

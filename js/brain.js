@@ -19,12 +19,33 @@
     speed: 0.0007,
     walkPhase: 0,
     blink: { open: 1, nextBlinkAt: 0, until: 0 },
-    headLook: { x: 0, y: 0 },         // smooth follow-the-mouse target
+    headLook: { x: 0, y: 0 },
+    headLookTarget: { x: 0, y: 0 },
+    gazeLinger: 0,                  // 0..1 — lingers after eye contact
     thought: '',
     thoughtUntil: 0,
     mouseX: 0.5, mouseY: 0.5,
+    lastMouseAt: 0,
     lastReactedToMouseAt: 0,
+    // tab visibility tracking for greeting
+    lastVisibleAt: Date.now(),
+    pendingGreeting: false,
+    // micro-life schedule (idle fidgets between decisions)
+    nextMicroAt: 0,
   };
+
+  // visibility listener — record the moment we go away
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden){
+      brain.lastVisibleAt = Date.now();
+    } else {
+      const away = Date.now() - brain.lastVisibleAt;
+      // 5+ seconds away → greeting; longer → bigger
+      if(away > 5000){
+        brain.pendingGreeting = away > 300000 ? 'big' : 'small';
+      }
+    }
+  });
 
   function tick(t, pet){
     if(!pet || pet.egg || pet.isDead){
@@ -36,14 +57,41 @@
       return;
     }
 
-    // smooth head-look toward mouse
-    brain.headLook.x += (brain.mouseX - 0.5 - brain.headLook.x) * 0.06;
-    brain.headLook.y += (brain.mouseY - 0.5 - brain.headLook.y) * 0.06;
+    // smooth head-look toward mouse with gaze-lingering.
+    // when the mouse has been still for ~600ms, the chicken locks on for a
+    // beat (gazeLinger ramps to 1), then deliberately drifts away (target
+    // moves to a neutral resting spot for ~1.5s, then re-locks).
+    const mouseStillFor = t - (brain.lastMouseAt || t);
+    if(mouseStillFor < 400){
+      // mouse moving — track immediately
+      brain.headLookTarget.x = brain.mouseX - 0.5;
+      brain.headLookTarget.y = brain.mouseY - 0.5;
+      brain.gazeLinger = 0;
+    } else if(brain.gazeLinger < 1){
+      // mouse settled — lock on (recognition cue at threshold)
+      const wasUnder = brain.gazeLinger < 0.05;
+      brain.headLookTarget.x = brain.mouseX - 0.5;
+      brain.headLookTarget.y = brain.mouseY - 0.5;
+      brain.gazeLinger = Math.min(1, brain.gazeLinger + 0.005);
+      if(wasUnder && brain.gazeLinger >= 0.05){
+        if(window.MicroAudio) window.MicroAudio.recogTrill();
+      }
+    } else if(brain.gazeLinger < 2){
+      // deliberately look away for a beat
+      brain.headLookTarget.x = (brain.mouseX - 0.5) * 0.2;
+      brain.headLookTarget.y = (brain.mouseY - 0.5) * 0.2;
+      brain.gazeLinger += 0.004;
+      if(brain.gazeLinger >= 2) brain.gazeLinger = 0;
+    }
+    brain.headLook.x += (brain.headLookTarget.x - brain.headLook.x) * 0.06;
+    brain.headLook.y += (brain.headLookTarget.y - brain.headLook.y) * 0.06;
 
     // blink loop
     if(t > brain.blink.nextBlinkAt){
       brain.blink.until = t + 120;
       brain.blink.nextBlinkAt = t + 2400 + Math.random() * 3500;
+      // tiny audible 'tk' for eye physicality
+      if(window.MicroAudio) window.MicroAudio.blinkTick();
     }
     brain.blink.open = t < brain.blink.until ? 0 : 1;
 
@@ -88,10 +136,68 @@
     }
     brain._lastT = t;
 
+    // pending tab-return greeting
+    if(brain.pendingGreeting && brain.pose === 'idle'){
+      const big = brain.pendingGreeting === 'big';
+      brain.pose = big ? 'celebrating' : 'waving';
+      brain.poseUntil = t + (big ? 1600 : 900);
+      brain.nextDecisionAt = brain.poseUntil + 200;
+      brain.pendingGreeting = false;
+      think(big ? 'you came back!' : 'oh, hello.', 3000);
+      return;
+    }
+
+    // micro-life fidgets during long idle stretches
+    if(brain.pose === 'idle' && t > brain.nextMicroAt){
+      const fidgets = ['look-away', 'shoulder', 'breath-hold', 'toe-tap', 'wattle-swallow', 'aborted-step'];
+      const pick = fidgets[Math.floor(Math.random() * fidgets.length)];
+      doMicro(pick, t);
+      // enforce silence gap (1.5s+ between micro-fidgets per design guidance)
+      brain.nextMicroAt = t + 1800 + Math.random() * 2200;
+    }
+
     if(t < brain.nextDecisionAt && brain.pose !== 'idle') return;
     if(brain.pose === 'idle' && t < brain.poseUntil) return;
 
     decideNext(t, pet);
+  }
+
+  // micro-fidgets — small idle behaviors, each <500ms
+  function doMicro(kind, t){
+    switch(kind){
+      case 'look-away':
+        brain.headLookTarget.x = (Math.random() - 0.5) * 0.6;
+        brain.headLookTarget.y = -0.1 + Math.random() * 0.2;
+        break;
+      case 'shoulder':
+        brain.pose = 'preening';
+        brain.poseUntil = t + 450;
+        brain.nextDecisionAt = brain.poseUntil + 100;
+        break;
+      case 'breath-hold':
+        // (handled in chicken renderer via breath phase nudge — no op here,
+        // but reserving the slot keeps the silence-gap pacing consistent.)
+        break;
+      case 'toe-tap':
+        brain.facing = brain.facing;     // no-op; reserved for future leg cycle
+        break;
+      case 'wattle-swallow':
+        // a small head bob — manipulate the head spring by nudging the
+        // headLookTarget vertically and snapping back next frame.
+        brain.headLookTarget.y -= 0.05;
+        setTimeout(() => { brain.headLookTarget.y += 0.05; }, 120);
+        break;
+      case 'aborted-step':
+        // pick a direction, take a tiny step, then snap back.
+        const dir = Math.random() > 0.5 ? 1 : -1;
+        brain.targetX = brain.x + dir * 0.02;
+        brain.pose = 'walking';
+        brain.facing = dir;
+        brain.poseUntil = t + 300;
+        brain.nextDecisionAt = brain.poseUntil + 150;
+        if(window.MicroAudio) window.MicroAudio.unsure();
+        break;
+    }
   }
 
   function decideNext(t, pet){
@@ -152,8 +258,12 @@
       case 'sit':      brain.pose='sitting';   brain.poseUntil = t + 3000 + Math.random()*4000; break;
       case 'preen':    brain.pose='preening';  brain.poseUntil = t + 1600; break;
       case 'celebrate':brain.pose='celebrating';brain.poseUntil = t + 1200; break;
-      case 'yawn':     brain.pose='yawning';   brain.poseUntil = t + 1200; break;
-      case 'stretch':  brain.pose='stretching';brain.poseUntil = t + 1400; break;
+      case 'yawn':     brain.pose='yawning';   brain.poseUntil = t + 1200;
+                       if(window.MicroAudio) window.MicroAudio.breath();
+                       break;
+      case 'stretch':  brain.pose='stretching';brain.poseUntil = t + 1400;
+                       if(window.MicroAudio) window.MicroAudio.breath();
+                       break;
       case 'dance':    brain.pose='dancing';   brain.poseUntil = t + 2200; break;
       case 'bow':      brain.pose='bowing';    brain.poseUntil = t + 1100; break;
       case 'sneeze':   brain.pose='sneezing';  brain.poseUntil = t + 500; break;
@@ -167,6 +277,10 @@
   }
 
   function setMouse(x, y){
+    // only count it as 'moved' if it actually moved
+    if(Math.abs(brain.mouseX - x) > 0.001 || Math.abs(brain.mouseY - y) > 0.001){
+      brain.lastMouseAt = performance.now();
+    }
     brain.mouseX = x; brain.mouseY = y;
   }
 

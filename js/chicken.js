@@ -107,11 +107,33 @@
     ctx.closePath();
   }
 
+  // ----- secondary-motion springs -----
+  // simple critically-damped springs that track a target with a soft lag.
+  // applied to wattle, tail, head to give 'follow-through' on movement.
+  const springs = {
+    wattleY:  { v: 0, x: 0, target: 0, k: 0.18, d: 0.65 },
+    tailRot:  { v: 0, x: 0, target: 0, k: 0.14, d: 0.7 },
+    headLag:  { v: 0, x: 0, target: 0, k: 0.22, d: 0.7 },
+  };
+  function stepSpring(sp, target, dtFactor){
+    sp.target = target;
+    const k = sp.k * dtFactor;
+    const d = sp.d;
+    sp.v += (target - sp.x) * k;
+    sp.v *= d;
+    sp.x += sp.v;
+    return sp.x;
+  }
+
   // ----- chicken drawing -----
   function drawChicken(t, scale){
     scale = scale || 1;
     const U = 100 * scale;
-    const breathe = Math.sin(t * 0.003) * 3;
+    // breathing — slow base rhythm with rare sighs that elongate one exhale
+    const breathPhase = t * 0.0022;
+    const sigh = Math.sin(t * 0.00037) > 0.94 ? 1.4 : 1;     // ~5s sighs
+    const breathe = Math.sin(breathPhase) * 3 * sigh;
+    const breathSquashY = 1 + Math.sin(breathPhase) * 0.025 * sigh;     // body subtly inflates
 
     // pull pose + facing from Brain when available
     const B = window.Brain;
@@ -152,9 +174,12 @@
     const sx = (Math.random() - 0.5) * s.intensity * 14;
     const sy = (Math.random() - 0.5) * s.intensity * 14;
 
+    // ease curves: smooth incoming pose transitions instead of snap
+    // (used by some pose offsets below)
+
     ctx.save();
     ctx.translate(sx + sneezeJerk, sy + breathe + walkBob + sitDrop - celebrateBounce - danceBounce + surpriseJerk);
-    ctx.scale(facing * cowerSquash, cowerSquash);
+    ctx.scale(facing * cowerSquash, cowerSquash * breathSquashY);
     ctx.rotate(danceRoll);
 
     // shadow
@@ -222,8 +247,11 @@
     drawWing(-U*0.55, -U*0.05, t, -1, wingOverride && wingOverride.left);
     drawWing( U*0.55, -U*0.05, t,  1, wingOverride && wingOverride.right);
 
-    // tail feathers
-    drawTail(-U*0.7, -U*0.1, t);
+    // tail feathers — spring follows happy/walking energy
+    const tailEnergy = (walking ? 1 : 0) + (celebrating || dancing ? 1.5 : 0);
+    const tailTarget = Math.sin(t * 0.012) * 0.3 * tailEnergy;
+    const tailRot = stepSpring(springs.tailRot, tailTarget, 1);
+    drawTail(-U*0.7, -U*0.1, t, tailRot);
 
     // neck + head — varied by pose
     let headTilt;
@@ -351,10 +379,10 @@
     ctx.restore();
   }
 
-  function drawTail(x, y, t){
+  function drawTail(x, y, t, extraRot){
     ctx.save();
     ctx.translate(x, y);
-    const tilt = Math.sin(t * 0.003) * 0.2;
+    const tilt = Math.sin(t * 0.003) * 0.2 + (extraRot || 0);
     ctx.rotate(tilt - 0.3);
     const colors = ['#ff5dd6', '#ffd57f', '#7fe9ff', '#7cff9a'];
     for(let i=0;i<4;i++){
@@ -415,6 +443,20 @@
     ctx.arc(0, -62, sleep ? 2 : 4 + s.intensity*2, 0, Math.PI*2);
     ctx.fill();
     ctx.shadowBlur = 0;
+
+    // wattle — the soft flap under the beak, with springy follow-through
+    // Target is driven by head motion (springs.headLag computed in render);
+    // here it just hangs off the chin and wobbles based on a private spring.
+    const wattleHang = stepSpring(springs.wattleY, Math.sin(t * 0.005) * 1.4, 1);
+    ctx.save();
+    ctx.translate(22, 18 + wattleHang);
+    ctx.fillStyle = '#c83649';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(3, 6, 0, 9);
+    ctx.quadraticCurveTo(-3, 6, 0, 0);
+    ctx.fill();
+    ctx.restore();
 
     // beak — yawning opens wide, sneezing trembles
     ctx.fillStyle = '#ffb340';
