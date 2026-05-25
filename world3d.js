@@ -4,6 +4,7 @@
 // and the helpers that characters' specials and events call into.
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { EventDirector } from "./events.js";
 
 const TIMES = ["dawn", "day", "dusk", "night"];
@@ -69,6 +70,12 @@ export class World {
     this.flags = {};        // event flags (e.g. ufo seen)
 
     this.updaters = []; // per-frame callbacks registered by events
+
+    // GLB cache: character-id -> THREE.Group (cloned per spawn). Populated by
+    // preloadModels() on boot. Missing entries fall back to the procedural mesh
+    // built by the character's buildBody().
+    this.modelCache = {};
+    this.gltfLoader = new GLTFLoader();
 
     this.events = new EventDirector(this);
 
@@ -251,6 +258,48 @@ export class World {
     this.starMat.opacity += (targetOpacity - this.starMat.opacity) * 0.02;
   }
 
+  // ---- model preloading --------------------------------------------------
+
+  // Preload every character's GLB (if present). Missing files just leave the
+  // cache empty for that id — the procedural mesh is used as the fallback.
+  // Returns a Promise that resolves once all loads have settled.
+  preloadModels(charDefs) {
+    const promises = charDefs.map((c) => {
+      if (!c.model) return Promise.resolve();
+      return new Promise((resolve) => {
+        this.gltfLoader.load(
+          c.model,
+          (gltf) => {
+            const root = gltf.scene;
+            // Ensure shadows + reasonable defaults on every mesh in the GLB.
+            root.traverse((n) => {
+              if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; }
+            });
+            // Auto-fit: scale the GLB so its tallest dimension is ~1.5 world units
+            // (about the height of the procedural meshes), and recenter on the
+            // ground plane.
+            const box = new THREE.Box3().setFromObject(root);
+            const size = new THREE.Vector3(); box.getSize(size);
+            const height = Math.max(size.y, 0.001);
+            const targetHeight = c.modelTargetHeight || 1.4;
+            const s = targetHeight / height;
+            root.scale.setScalar(s);
+            const box2 = new THREE.Box3().setFromObject(root);
+            const center = new THREE.Vector3(); box2.getCenter(center);
+            root.position.x -= center.x;
+            root.position.z -= center.z;
+            root.position.y -= box2.min.y; // feet on y=0
+            this.modelCache[c.id] = root;
+            resolve();
+          },
+          undefined,
+          (_err) => { /* swallow — fallback to procedural */ resolve(); }
+        );
+      });
+    });
+    return Promise.all(promises);
+  }
+
   // ---- actors -------------------------------------------------------------
 
   placeEgg(charDef, position) {
@@ -306,7 +355,7 @@ export class World {
   }
 
   _spawnActor(charDef, position) {
-    const mesh = charDef.buildBody();
+    const mesh = this._buildActorMesh(charDef);
     mesh.position.copy(position);
     mesh.position.y = charDef.flying ? 6 : (charDef.floating ? 1.5 : 0.6);
     mesh.userData = { kind: "actor", charId: charDef.id };
@@ -333,12 +382,29 @@ export class World {
   rebuildActor(actor) {
     const oldPos = actor.mesh.position.clone();
     this.scene.remove(actor.mesh);
-    const m = actor.def.buildBody();
+    const m = this._buildActorMesh(actor.def);
     m.position.copy(oldPos);
     m.userData = { kind: "actor", charId: actor.id };
     m.traverse((c) => { if (c.isMesh) c.userData.actorRef = m; });
     this.scene.add(m);
     actor.mesh = m;
+  }
+
+  // Prefer the GLB if it was successfully preloaded; otherwise fall back to the
+  // character's procedural buildBody(). The GLB is cloned so each spawn has its
+  // own scene-graph instance (palette tweaks on Ember's rebirth, etc.).
+  _buildActorMesh(charDef) {
+    const cached = this.modelCache[charDef.id];
+    if (cached) {
+      const cloned = cached.clone(true);
+      // Clone materials so per-instance tints (e.g. Ember's color cycle) don't
+      // leak across actors. Standard three.js clone() shares materials by ref.
+      cloned.traverse((n) => {
+        if (n.isMesh && n.material) n.material = n.material.clone();
+      });
+      return cloned;
+    }
+    return charDef.buildBody();
   }
 
   findNearestActor(toVec3) {

@@ -45,6 +45,12 @@ window.addEventListener("resize", () => {
 const world = new World({ renderer, scene, camera });
 window.__world = world;
 
+// Try to preload Tripo-generated GLB models for every character. Missing files
+// are silently fine — the procedural three.js mesh is used as fallback. This
+// runs in parallel with everything else; the loader fires the first time a
+// character is spawned, so a slow GLB load doesn't block the welcome screen.
+world.preloadModels(CHARACTERS);
+
 // ---- Eggs in a circle around the center ----------------------------------
 
 const PUBLIC_CHARS = CHARACTERS.filter((c) => !c.secret);
