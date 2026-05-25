@@ -73,7 +73,11 @@ A scheduler picks one of these every 25–55 seconds (no overlap):
 
 - `index.html` — page, importmap, HUD, roster, inspector
 - `styles.css` — overlay UI (glass-blur HUD, roster, inspector, toast)
-- `characters3d.js` — the nine hatchlings: low-poly `THREE.Group` factories + story + special
+- `characters3d.js` — the nine hatchlings: low-poly `THREE.Group` factories + story + special + portrait + model
 - `events.js` — `EventDirector` scheduler + every event (UFO, first contact, wolf, winter, igloos, polar bear, aurora borealis, meteors, eclipse) + character-special effects (constellation, rainbow, pip rain, memory bubble, rebirth)
-- `world3d.js` — scene scaffolding, terrain, time/weather, actor management, helpers used by events and specials
+- `world3d.js` — scene scaffolding, terrain, time/weather, actor management, helpers used by events and specials; preloads `docs/models/<id>.glb` if present and uses them in place of the procedural meshes
 - `main3d.js` — boot, camera (OrbitControls), raycaster (tap egg / actor / bubble), Solis gate, game loop
+- `docs/portraits/<id>.png` — painterly portraits used by the roster + inspector + hatch reveal (Whip / ChatGPT image-gen)
+- `docs/title.png` — title-screen splash (Whip / ChatGPT image-gen)
+- `docs/models/<id>.glb` — *optional* Tripo-generated character meshes. Drop a `.glb` named after a character id here and `world3d.js` auto-loads it and uses it in place of the procedural mesh (auto-fits height to ~1.4 units and recenters feet at y=0).
+
