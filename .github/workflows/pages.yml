@@ -2,30 +2,44 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master, claude/psychedelic-chicken-robot-XZ0Jy]
+    branches:
+      - master
+      - claude/cluckbot-hero-art-static-8I3M3
+      - claude/psychedelic-chicken-robot-XZ0Jy
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Stage static site
         run: |
           mkdir _site
-          cp -r index.html styles.css js _site/
+          cp index.html styles.css _site/
+          cp -r js _site/
+          cp -r assets _site/
           touch _site/.nojekyll
-      - name: Push to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./_site
-          publish_branch: gh-pages
-          force_orphan: true
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
