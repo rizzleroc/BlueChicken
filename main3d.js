@@ -9,6 +9,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CHARACTERS } from "./characters3d.js";
 import { World } from "./world3d.js";
 import { audio } from "./audio.js";
+import { ACCELERATORS, ACCELERATOR_BY_ID, beginPurchase, consumeRedirect, applyAccelerator } from "./payments.js";
 
 // ---- Renderer / Scene / Camera --------------------------------------------
 
@@ -436,6 +437,201 @@ revealGo.onclick = () => {
   playNextReveal();
 };
 
+// ---- Accelerator shop -----------------------------------------------------
+
+const shop = document.getElementById("shop");
+const shopGrid = document.getElementById("shop-grid");
+const paystub = document.getElementById("paystub");
+const paystubTitle = document.getElementById("paystub-title");
+const paystubBody = document.getElementById("paystub-body");
+const paystubAmount = document.getElementById("paystub-amount");
+const paystubConfirm = document.getElementById("paystub-confirm");
+let pendingPurchase = null;
+
+function renderShop() {
+  shopGrid.innerHTML = "";
+  for (const item of ACCELERATORS) {
+    const card = document.createElement("div");
+    card.className = "shop-item";
+    const have = world.accelerators[item.id] || 0;
+    card.innerHTML = `
+      <div class="shop-item-row">
+        <div class="shop-icon">${item.icon}</div>
+        <div class="shop-name">${item.name}</div>
+        <div class="shop-count">${have ? "owned: " + have : "&nbsp;"}</div>
+      </div>
+      <div class="shop-desc">${item.blurb}</div>
+      <div class="shop-actions">
+        <button class="buy-btn">Buy ${item.qty} · $${item.priceUsd.toFixed(2)}</button>
+        <button class="use-btn" ${have > 0 ? "" : "disabled"}>Use</button>
+      </div>
+    `;
+    card.querySelector(".buy-btn").onclick = () => initiatePurchase(item);
+    card.querySelector(".use-btn").onclick = () => useAccelerator(item);
+    shopGrid.appendChild(card);
+  }
+}
+
+function openShop() {
+  audio.init();
+  renderShop();
+  shop.hidden = false;
+}
+function closeShop() { shop.hidden = true; }
+document.getElementById("shop-toggle").onclick = openShop;
+document.getElementById("shop-close").onclick = closeShop;
+shop.addEventListener("click", (ev) => { if (ev.target === shop) closeShop(); });
+
+function initiatePurchase(item) {
+  const mode = beginPurchase(item);
+  if (mode === "stripe") return; // browser is already navigating
+  // Mock confirmation flow.
+  pendingPurchase = item;
+  paystubTitle.textContent = `Pretend-Buy: ${item.name}`;
+  paystubBody.textContent = `${item.qty} × ${item.name} — ${item.blurb}`;
+  paystubAmount.textContent = item.priceUsd.toFixed(2);
+  paystub.hidden = false;
+}
+document.getElementById("paystub-close").onclick =
+document.getElementById("paystub-cancel").onclick = () => {
+  paystub.hidden = true;
+  pendingPurchase = null;
+};
+paystub.addEventListener("click", (ev) => {
+  if (ev.target === paystub) { paystub.hidden = true; pendingPurchase = null; }
+});
+paystubConfirm.onclick = () => {
+  if (!pendingPurchase) { paystub.hidden = true; return; }
+  world.accelerators[pendingPurchase.id] = (world.accelerators[pendingPurchase.id] || 0) + pendingPurchase.qty;
+  world._persist();
+  world.toast(`+${pendingPurchase.qty} ${pendingPurchase.name}.`);
+  paystub.hidden = true;
+  pendingPurchase = null;
+  renderShop();
+};
+
+function useAccelerator(item) {
+  const summonSolis = () => {
+    if (solisRevealed) return false;
+    solisRevealed = true;
+    world.flagSeen("solisRevealed");
+    if (!world.eggs[SECRET.id] && !world.actors.find((a) => a.id === SECRET.id)) {
+      world.placeEgg(SECRET, new THREE.Vector3(0, 2.5, 0));
+    }
+    buildRoster();
+    for (const a of world.actors) refreshRosterFor(a);
+    world.toast("Solis stirs — earlier than expected.");
+    return true;
+  };
+  const applied = applyAccelerator(world, item.id, { summonSolis });
+  if (applied) {
+    world.toast(`Used ${item.name}.`);
+    renderShop();
+  } else {
+    world.toast("Nothing to apply right now.");
+  }
+}
+
+// Stripe redirect: if we just came back from a real Payment Link, the URL has
+// ?paid=<id>&qty=<n>. Grant it now (before the welcome dismiss).
+const granted = consumeRedirect(world);
+if (granted) {
+  world.toast(`+${granted.qty} ${granted.item.name} purchased.`);
+}
+
+// ---- Tester / dev panel ---------------------------------------------------
+
+const devpanel = document.getElementById("devpanel");
+const devToggleBtn = document.getElementById("dev-toggle");
+const devAvailable =
+  (typeof location !== "undefined" && new URLSearchParams(location.search).has("dev")) ||
+  (typeof localStorage !== "undefined" && localStorage.getItem("bc-dev") === "1");
+
+if (devAvailable) {
+  devToggleBtn.hidden = false;
+}
+
+function setDev(enabled) {
+  devpanel.hidden = !enabled;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("bc-dev", enabled ? "1" : "0");
+  }
+}
+devToggleBtn.onclick = () => setDev(devpanel.hidden);
+document.getElementById("devpanel-close").onclick = () => setDev(false);
+
+// Tilde / backtick key toggles the dev panel from anywhere (and surfaces the
+// HUD button on first press).
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "`" || ev.key === "~") {
+    devToggleBtn.hidden = false;
+    setDev(devpanel.hidden);
+  }
+});
+
+let fastTime = false;
+const origTimeFlag = (typeof window !== "undefined") ? { } : {};
+
+devpanel.addEventListener("click", (ev) => {
+  const dev = ev.target.dataset.dev;
+  const eventId = ev.target.dataset.event;
+  if (dev) {
+    switch (dev) {
+      case "skipphase": world.skipTimePhase(); break;
+      case "cycle": world.timeIdx = 3; world.timeT = 0; world._applyTimeBlend(0); break;
+      case "fasttime": fastTime = !fastTime; ev.target.textContent = fastTime ? "Toggle 1× time (on)" : "Toggle 10× time"; break;
+      case "hatchone": {
+        const id = Object.keys(world.eggs)[0];
+        if (id) {
+          const a = world.tapEgg(id) || (function () {
+            // Force-hatch
+            const e = world.eggs[id]; if (!e) return null;
+            e.taps = 5; return world.tapEgg(id);
+          })();
+          if (a) { refreshRosterFor(a); showReveal(a.def); checkSolisGate(); }
+        }
+        break;
+      }
+      case "hatchall": {
+        const ids = Object.keys(world.eggs);
+        for (const id of ids) {
+          const e = world.eggs[id]; if (!e) continue;
+          e.taps = 5;
+          const a = world.tapEgg(id);
+          if (a) { refreshRosterFor(a); checkSolisGate(); }
+        }
+        world.toast("All eggs hatched.");
+        break;
+      }
+      case "joyall": world.joyBurst(1); world.toast("Joy maxed."); break;
+      case "solis": {
+        if (!solisRevealed) {
+          solisRevealed = true;
+          world.flagSeen("solisRevealed");
+          world.placeEgg(SECRET, new THREE.Vector3(0, 2.5, 0));
+          buildRoster();
+          for (const a of world.actors) refreshRosterFor(a);
+          world.toast("Solis summoned (dev).");
+        }
+        break;
+      }
+      case "freeacc": {
+        for (const acc of ACCELERATORS) world.accelerators[acc.id] = (world.accelerators[acc.id] || 0) + 5;
+        world._persist();
+        world.toast("+5 of each accelerator (dev).");
+        break;
+      }
+      case "opacc": openShop(); break;
+      case "reset": world.hardReset(); break;
+    }
+  } else if (eventId) {
+    // Fire the named event via the director if a matching one exists.
+    const ev2 = world.events.scheduled.find((e) => e.id === eventId);
+    if (ev2) { world.events._fire(ev2); }
+    else if (eventId === "auroraBorealis") world.events._fire(world.events.scheduled.find((e) => e.id === "auroraBorealis"));
+  }
+});
+
 // Hide the controls hint after 9 seconds.
 setTimeout(() => document.getElementById("controls-hint").classList.add("fade"), 9000);
 
@@ -454,7 +650,9 @@ function frame(now) {
   const dt = Math.min(50, now - last);
   last = now;
   controls.update();
-  world.tick(dt);
+  // Tester-mode 10× time: feed the world a multiplied dt. Day/night and event
+  // scheduler both consume dt, so a single multiplier accelerates everything.
+  world.tick(fastTime ? dt * 10 : dt);
   updateJoyPill();
   if (!solisRevealed && world.actors.length >= PUBLIC_CHARS.length) checkSolisGate();
   renderer.render(scene, camera);

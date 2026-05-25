@@ -70,6 +70,9 @@ export class World {
     this.bubbles = [];      // memory bubbles (for click pick)
     this.flags = {};        // event flags (e.g. ufo seen)
     this.hatched = {};      // id -> true; rehydrated from localStorage on boot
+    this.accelerators = {   // accelerator inventory; tester mode + shop top these up
+      sunbeam: 0, hatch_charm: 0, joy_spark: 0, solis_beacon: 0,
+    };
 
     // localStorage key. Bump if the snapshot shape ever breaks back-compat.
     this._saveKey = "bluechicken/hatchling-world/v1";
@@ -269,45 +272,97 @@ export class World {
   }
 
   _scatterScenery() {
-    // Trees: a low-poly conifer (cylinder trunk, stacked cones).
-    const trunkMat = std(0x4a2f1a);
-    const leafMat = std(0x355d2a);
-    const N = 18;
-    for (let i = 0; i < N; i++) {
-      const ang = (i / N) * Math.PI * 2 + rand(-0.2, 0.2);
+    // Stable placements: chosen once and re-used whether we render procedural
+    // fallbacks now (textures may not have loaded yet) or upgraded sprites
+    // later via _upgradeScenery().
+    this._treePlacements = [];
+    this._rockPlacements = [];
+    for (let i = 0; i < 18; i++) {
+      const ang = (i / 18) * Math.PI * 2 + rand(-0.2, 0.2);
       const r = rand(GROUND_RADIUS * 0.55, GROUND_RADIUS - 1.5);
-      const x = Math.cos(ang) * r;
-      const z = Math.sin(ang) * r;
-      const tree = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.0, 6), trunkMat);
-      trunk.position.y = 0.5;
-      trunk.castShadow = true;
-      tree.add(trunk);
-      for (let s = 0; s < 3; s++) {
-        const cone = new THREE.Mesh(
-          new THREE.ConeGeometry(0.95 - s * 0.18, 1.2 - s * 0.18, 8),
-          leafMat
-        );
-        cone.position.y = 1.1 + s * 0.55;
-        cone.castShadow = true;
-        tree.add(cone);
-      }
-      tree.position.set(x, 0, z);
-      tree.rotation.y = rand(0, Math.PI * 2);
-      tree.scale.setScalar(rand(0.85, 1.4));
-      this.scene.add(tree);
+      this._treePlacements.push({
+        x: Math.cos(ang) * r,
+        z: Math.sin(ang) * r,
+        scale: rand(0.85, 1.4),
+        rot: rand(0, Math.PI * 2),
+      });
     }
-    // A few rocks
     for (let i = 0; i < 12; i++) {
-      const rock = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(rand(0.35, 0.7), 0),
-        std(0x7a8088)
-      );
-      rock.position.set(rand(-22, 22), 0.2, rand(-22, 22));
-      rock.castShadow = true;
-      rock.receiveShadow = true;
-      this.scene.add(rock);
+      this._rockPlacements.push({
+        x: rand(-22, 22), z: rand(-22, 22),
+        scale: rand(0.45, 0.85),
+      });
     }
+    this._treeMeshes = [];
+    this._rockMeshes = [];
+    this._sceneryUpgradeNeeded = true;
+    this._renderScenery(); // procedural fallback for first paint
+  }
+
+  _renderScenery() {
+    // Remove any prior scenery (used by _upgradeScenery when swapping).
+    for (const m of this._treeMeshes) this.scene.remove(m);
+    for (const m of this._rockMeshes) this.scene.remove(m);
+    this._treeMeshes = [];
+    this._rockMeshes = [];
+
+    const haveTree = !!this.treeTexture;
+    const haveRock = !!this.rockTexture;
+
+    for (const p of this._treePlacements) {
+      if (haveTree) {
+        // Painted-tree billboard sprite. Centered at feet (bottom) and scaled
+        // so a typical tree reads about 4 world units tall.
+        const mat = new THREE.SpriteMaterial({
+          map: this.treeTexture, transparent: true, depthWrite: false, alphaTest: 0.05,
+        });
+        const tree = new THREE.Sprite(mat);
+        tree.center.set(0.5, 0);
+        tree.scale.setScalar(p.scale * 4.0);
+        tree.position.set(p.x, 0, p.z);
+        this.scene.add(tree);
+        this._treeMeshes.push(tree);
+      } else {
+        // Procedural fallback: cylinder trunk + 3 stacked cones, used briefly
+        // before the painted texture finishes loading.
+        const tree = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.0, 6), std(0x4a2f1a));
+        trunk.position.y = 0.5; trunk.castShadow = true; tree.add(trunk);
+        for (let s = 0; s < 3; s++) {
+          const cone = new THREE.Mesh(new THREE.ConeGeometry(0.95 - s * 0.18, 1.2 - s * 0.18, 8), std(0x355d2a));
+          cone.position.y = 1.1 + s * 0.55; cone.castShadow = true; tree.add(cone);
+        }
+        tree.position.set(p.x, 0, p.z);
+        tree.rotation.y = p.rot;
+        tree.scale.setScalar(p.scale);
+        this.scene.add(tree);
+        this._treeMeshes.push(tree);
+      }
+    }
+    for (const p of this._rockPlacements) {
+      if (haveRock) {
+        const mat = new THREE.SpriteMaterial({
+          map: this.rockTexture, transparent: true, depthWrite: false, alphaTest: 0.05,
+        });
+        const rock = new THREE.Sprite(mat);
+        rock.center.set(0.5, 0);
+        rock.scale.setScalar(p.scale * 1.6);
+        rock.position.set(p.x, 0, p.z);
+        this.scene.add(rock);
+        this._rockMeshes.push(rock);
+      } else {
+        const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(p.scale, 0), std(0x7a8088));
+        rock.position.set(p.x, 0.2, p.z);
+        rock.castShadow = true; rock.receiveShadow = true;
+        this.scene.add(rock);
+        this._rockMeshes.push(rock);
+      }
+    }
+  }
+
+  _upgradeScenery() {
+    this._renderScenery();
+    this._sceneryUpgradeNeeded = false;
   }
 
   _buildStars() {
@@ -350,6 +405,44 @@ export class World {
 
   cycleTime() {
     this.timeT = TIME_DURATION_MS;
+  }
+
+  // ---- tester / accelerator helpers ---------------------------------------
+
+  // Accelerator: instant-hatch one (or every) egg waiting in the world.
+  // Returns the number of actors spawned. Called by tester mode AND by the
+  // "Hatch Charm" accelerator from the shop.
+  instantHatch(charId = null) {
+    let spawned = 0;
+    const ids = charId ? [charId] : Object.keys(this.eggs);
+    for (const id of ids) {
+      if (this.hatchEgg(id)) spawned++;
+    }
+    return spawned;
+  }
+
+  // Accelerator: skip forward in time. Useful both for testing the cycle and
+  // for the "Sunbeam" purchase that fast-forwards one phase.
+  skipTimePhase() {
+    this.timeT = TIME_DURATION_MS; // _applyTimeBlend wraps on next tick
+  }
+  skipMinutes(mins) {
+    // Each "minute" in-game is TIME_DURATION_MS/some-factor. Treat 1 IRL minute
+    // as 1 in-world phase advance.
+    this.timeT += mins * 60_000;
+  }
+
+  // Accelerator: bump joy on every hatched character.
+  joyBurst(amount = 0.3) {
+    for (const a of this.actors) a.joy = Math.min(1, a.joy + amount);
+    this._persist();
+    if (this.focus) this._refreshInspector();
+  }
+
+  // Reset everything persistent. Used by the dev panel.
+  hardReset() {
+    this.resetSave();
+    location.reload();
   }
 
   // Broadcast a world event to every actor so they can react in character.
@@ -555,7 +648,36 @@ export class World {
       if (c.model) promises.push(this._loadGLB(c));
       if (c.portrait) promises.push(this._loadSpriteTexture(c));
     }
+    // Also load painted scenery textures used by _scatterScenery. We can't load
+    // them during the constructor because TextureLoader is async — and we want
+    // the scenery sprites to be ready by the time the user dismisses welcome.
+    promises.push(this._loadSceneryTextures());
     return Promise.all(promises);
+  }
+
+  _loadSceneryTextures() {
+    const loadOne = (key, url) => new Promise((resolve) => {
+      this.textureLoader.load(
+        url,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          this[key] = tex;
+          // If scenery has already been scattered procedurally, swap to sprite
+          // versions now. (Order: _scatterScenery runs in the constructor with
+          // procedural fallback, then textures land and we upgrade in place.)
+          if (this._sceneryUpgradeNeeded) this._upgradeScenery();
+          resolve();
+        },
+        undefined,
+        () => resolve()
+      );
+    });
+    return Promise.all([
+      loadOne("treeTexture", "docs/scenery/tree.png"),
+      loadOne("rockTexture", "docs/scenery/rock.png"),
+    ]);
   }
 
   _loadGLB(c) {
@@ -995,6 +1117,7 @@ export class World {
         actors: actorState,
         discoveries: this.discoveries,
         flags: this.flags,
+        accelerators: this.accelerators,
         savedAt: Date.now(),
       };
       localStorage.setItem(this._saveKey, JSON.stringify(snap));
@@ -1015,6 +1138,10 @@ export class World {
       this.hatched = snap.hatched || {};
       this.discoveries = snap.discoveries || {};
       this.flags = snap.flags || {};
+      this.accelerators = Object.assign(
+        { sunbeam: 0, hatch_charm: 0, joy_spark: 0, solis_beacon: 0 },
+        snap.accelerators || {}
+      );
       this._loadedActors = snap.actors || {};
       return snap;
     } catch (_e) { return null; }
