@@ -352,6 +352,21 @@ export class World {
     this.timeT = TIME_DURATION_MS;
   }
 
+  // Broadcast a world event to every actor so they can react in character.
+  // Each character's def may export reactTo(eventId, world, actor) — anything
+  // is fair game: heading bias, joy bump, sprite tint, teleport, etc. Errors
+  // are swallowed because one character's broken reaction shouldn't take the
+  // event down.
+  broadcastEvent(eventId) {
+    for (const actor of this.actors) {
+      const def = actor.def;
+      if (typeof def.reactTo === "function") {
+        try { def.reactTo(eventId, this, actor); }
+        catch (e) { console.warn("reactTo failed for", actor.id, e); }
+      }
+    }
+  }
+
   _applyTimeBlend(dt) {
     this.timeT += dt;
     if (this.timeT >= TIME_DURATION_MS) {
@@ -391,11 +406,20 @@ export class World {
     const ang = fullT * Math.PI * 2;
     this.sun.position.set(Math.cos(ang) * 30, Math.max(2, Math.sin(ang) * 30), Math.sin(ang) * 10);
     this.sun.intensity = Math.max(0.05, Math.sin(ang) * 1.6);
-    // Stars fade in at night.
+    // Stars fade in at night, with a small twinkle (low-amp sinusoidal jitter
+    // on the global material opacity — cheap and atmospheric without touching
+    // per-vertex attributes).
     const isNight = cur === "night";
     const isDuskOrDawn = cur === "dusk" || cur === "dawn";
-    let targetOpacity = isNight ? 1 : isDuskOrDawn ? 0.4 : 0;
-    this.starMat.opacity += (targetOpacity - this.starMat.opacity) * 0.02;
+    const base = isNight ? 1 : isDuskOrDawn ? 0.4 : 0;
+    const twinkle = (isNight ? 0.12 : 0.04) * Math.sin(performance.now() * 0.002);
+    const target = Math.max(0, base + twinkle);
+    this.starMat.opacity += (target - this.starMat.opacity) * 0.06;
+    // Crickets bleed in at night, fade out by day.
+    if (this.audio && typeof this.audio.setNightAmbient === "function") {
+      const cricketLevel = isNight ? 1 : isDuskOrDawn ? 0.35 : 0;
+      this.audio.setNightAmbient(cricketLevel);
+    }
   }
 
   // ---- hatch burst -------------------------------------------------------

@@ -116,7 +116,9 @@ export class AudioEngine {
 
   // ---- ambient ------------------------------------------------------------
 
-  // A very soft two-tone drone that breathes underneath everything. Cheap.
+  // Layered ambient. Always-on: a soft two-tone drone. Night-only: a thin
+  // cricket bed (lightly-filtered noise pulsed by a slow LFO into chirps).
+  // We crossfade the cricket bed via setNightAmbient(0..1) from world tick.
   _startAmbient() {
     if (this.ambientNodes) return;
     const t = this._now();
@@ -130,12 +132,54 @@ export class AudioEngine {
     const lfoGain = this.ctx.createGain();
     lfoGain.gain.value = 6;
     lfo.connect(lfoGain).connect(b.frequency);
-    const g = this.ctx.createGain();
-    g.gain.value = 0.05;
-    a.connect(g); b.connect(g);
-    g.connect(this.master);
+    const droneGain = this.ctx.createGain();
+    droneGain.gain.value = 0.05;
+    a.connect(droneGain); b.connect(droneGain);
+    droneGain.connect(this.master);
     a.start(t); b.start(t); lfo.start(t);
-    this.ambientNodes = { a, b, lfo, g };
+
+    // Crickets: bandpass-filtered white noise, amplitude-modulated by a
+    // sub-audio square LFO so it chirps at ~5Hz. Starts at 0 gain; the world
+    // tick brings it up at night via setNightAmbient.
+    const bufSize = Math.floor(this.ctx.sampleRate * 2);
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+    const cricketSrc = this.ctx.createBufferSource();
+    cricketSrc.buffer = buf;
+    cricketSrc.loop = true;
+    const cricketFilter = this.ctx.createBiquadFilter();
+    cricketFilter.type = "bandpass";
+    cricketFilter.frequency.value = 4800;
+    cricketFilter.Q.value = 22;
+    const cricketChirp = this.ctx.createGain();
+    cricketChirp.gain.value = 0;
+    // Slow square LFO drives the chirp envelope.
+    const chirpLfo = this.ctx.createOscillator();
+    chirpLfo.type = "square";
+    chirpLfo.frequency.value = 5.2;
+    const chirpLfoGain = this.ctx.createGain();
+    chirpLfoGain.gain.value = 0.5;
+    chirpLfo.connect(chirpLfoGain).connect(cricketChirp.gain);
+    cricketSrc.connect(cricketFilter).connect(cricketChirp);
+    const cricketMaster = this.ctx.createGain();
+    cricketMaster.gain.value = 0;     // raised by setNightAmbient
+    cricketChirp.connect(cricketMaster).connect(this.master);
+    cricketSrc.start(t); chirpLfo.start(t);
+
+    this.ambientNodes = { a, b, lfo, droneGain, cricketMaster };
+  }
+
+  // Crossfade the cricket bed in/out. World calls this each tick with a value
+  // proportional to "how night-like is it right now" (1 at night, 0 in day).
+  setNightAmbient(t01) {
+    if (!this.ambientNodes || !this.ambientNodes.cricketMaster) return;
+    const target = Math.max(0, Math.min(1, t01)) * 0.10;
+    const node = this.ambientNodes.cricketMaster.gain;
+    const now = this.ctx.currentTime;
+    node.cancelScheduledValues(now);
+    // Long smooth ramp — feels like nightfall, not a switch.
+    node.linearRampToValueAtTime(target, now + 1.5);
   }
 
   // ---- event cues ---------------------------------------------------------

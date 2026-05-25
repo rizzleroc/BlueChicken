@@ -756,15 +756,47 @@ const characterSpecials = {
       arcGroup.add(torus);
     }
     world.scene.add(arcGroup);
+    // Cross-character coupling: every actor under the rainbow's footprint gets
+    // tinted with one of the seven prismatic colors for the duration. When the
+    // rainbow fades, the tint goes with it — so Glimmer's special is no longer
+    // a fire-and-forget particle effect, it's something that visibly happens
+    // *to* the rest of the cast. (Audit consensus: "purely decorative" → not.)
+    const tinted = [];
+    const RAINBOW_RADIUS = 16;
+    for (const a of world.actors) {
+      const dx = a.mesh.position.x - args.x;
+      const dz = a.mesh.position.z - args.z;
+      if (Math.hypot(dx, dz) > RAINBOW_RADIUS) continue;
+      // Tinting only works on Sprite/SpriteMaterial (the painted-cutout path).
+      const sprite = a.mesh.children.find((c) => c.isSprite);
+      if (!sprite || !sprite.material || !sprite.material.color) continue;
+      tinted.push({
+        sprite,
+        originalColor: sprite.material.color.clone(),
+        targetColor: new THREE.Color(colors[Math.floor(Math.random() * colors.length)]),
+      });
+    }
+    // Discovery: record who got painted, if anyone.
+    if (tinted.length > 0) {
+      const names = tinted.map((t) => world.actors.find((a) => a.mesh.children.includes(t.sprite))?.name).filter(Boolean);
+      world.discover("glimmer", "Painted " + names.join(", ") + " in prism colors.");
+    }
     const tStart = performance.now();
     const dur = 4500;
     const step = () => {
       const t = Math.min(1, (performance.now() - tStart) / dur);
-      arcGroup.children.forEach((arc) => {
-        arc.material.opacity = t < 0.3 ? t / 0.3 * 0.85 : t > 0.7 ? (1 - t) / 0.3 * 0.85 : 0.85;
-      });
+      const arcAlpha = t < 0.3 ? t / 0.3 * 0.85 : t > 0.7 ? (1 - t) / 0.3 * 0.85 : 0.85;
+      arcGroup.children.forEach((arc) => (arc.material.opacity = arcAlpha));
+      // Sprite tints follow the same envelope, then settle back to original.
+      const tintAmount = t < 0.3 ? t / 0.3 : t > 0.7 ? (1 - t) / 0.3 : 1;
+      for (const tt of tinted) {
+        tt.sprite.material.color.lerpColors(tt.originalColor, tt.targetColor, tintAmount);
+      }
       if (t < 1) requestAnimationFrame(step);
-      else world.scene.remove(arcGroup);
+      else {
+        world.scene.remove(arcGroup);
+        for (const tt of tinted) tt.sprite.material.color.copy(tt.originalColor);
+      }
     };
     requestAnimationFrame(step);
   },
@@ -929,6 +961,10 @@ export class EventDirector {
   async _fire(event) {
     this.active = event;
     this.world.setEventLabel(event.label);
+    // Tell every hatched character the event is starting so they can react in
+    // character. Each character's reactTo() can bias heading, joy, sprite
+    // tint, etc. — turning every event from a cutscene into a scene.
+    this.world.broadcastEvent(event.id);
     try { await event.run(this.world); }
     catch (e) { console.error("event", event.id, "failed:", e); }
     this.active = null;

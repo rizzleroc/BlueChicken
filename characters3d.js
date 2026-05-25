@@ -130,6 +130,13 @@ const aurora = {
     world.toast(actor.name + " sings a star-song into the sky.");
     world.discover(actor.id, "Drew a constellation.");
   },
+  reactTo(eventId, world, self) {
+    // Loves anything in the sky; the dimming sun unsettles her.
+    if (eventId === "ufo" || eventId === "auroraBorealis" || eventId === "meteor") {
+      self.joy = Math.min(1, self.joy + 0.06);
+    }
+    if (eventId === "eclipse") self.joy = Math.max(0, self.joy - 0.05);
+  },
 };
 
 // ----- 2. MAGMA — Lava Pup --------------------------------------------------
@@ -205,6 +212,12 @@ const magma = {
   onMove(world, actor) {
     if (Math.random() < 0.18) world.spawnFootprint(actor.mesh.position, 0xff8a30);
   },
+  reactTo(eventId, world, self) {
+    // Fearless guard dog — dashes at threats. Hates the cold.
+    if (eventId === "wolf") { world.dashActor(self, 4); self.joy = Math.max(0, self.joy - 0.04); }
+    if (eventId === "winter" || eventId === "snowfall") self.joy = Math.max(0, self.joy - 0.08);
+    if (eventId === "thaw" || eventId === "eclipse") self.joy = Math.min(1, self.joy + 0.05);
+  },
 };
 
 // ----- 3. GLIMMER — Crystal Fox --------------------------------------------
@@ -271,6 +284,13 @@ const glimmer = {
     world.toast(actor.name + " catches the light and casts it free.");
     world.discover(actor.id, "Cast a rainbow.");
   },
+  reactTo(eventId, world, self) {
+    // Refracts every kind of new light; pouts in the dark.
+    if (eventId === "ufo" || eventId === "auroraBorealis" || eventId === "meteor") {
+      self.joy = Math.min(1, self.joy + 0.07);
+    }
+    if (eventId === "eclipse") self.joy = Math.max(0, self.joy - 0.06);
+  },
 };
 
 // ----- 4. MOSSBACK — Garden Turtle ------------------------------------------
@@ -333,6 +353,11 @@ const mossback = {
     world.plantOnTurtle(actor);
     world.toast(actor.name + " adds a sprout to her garden.");
     world.discover(actor.id, "Grew a new plant on her shell.");
+  },
+  reactTo(eventId, world, self) {
+    // The anchor. She doesn't flinch — others cluster near her in winter.
+    if (eventId === "winter") { self.vx = 0; self.vz = 0; }
+    if (eventId === "meteor" || eventId === "auroraBorealis") self.joy = Math.min(1, self.joy + 0.04);
   },
 };
 
@@ -407,6 +432,13 @@ const whisper = {
     world.toast(actor.name + " is gone. A riddle remains.");
     world.discover(actor.id, "Riddle: " + riddle);
   },
+  reactTo(eventId, world, self) {
+    // Comes alive in shadow. Vanishes when a wolf shows up.
+    if (eventId === "eclipse")        self.joy = Math.min(1, self.joy + 0.12);
+    if (eventId === "winter" || eventId === "snowfall") self.joy = Math.min(1, self.joy + 0.06);
+    if (eventId === "auroraBorealis") world.teleportActor(self, null);
+    if (eventId === "wolf")           world.teleportActor(self, null);
+  },
 };
 
 // ----- 6. PIP — Storm Sparrow -----------------------------------------------
@@ -476,6 +508,12 @@ const pip = {
     world.toast(actor.name + "'s little cloud bursts.");
     world.discover(actor.id, "Made it rain — a flower grew.");
   },
+  reactTo(eventId, world, self) {
+    // Tiny and skittish. Flees the wolf, sad without rain, jubilant at thaw.
+    if (eventId === "wolf") { self.heading += Math.PI; self.joy = Math.max(0, self.joy - 0.05); }
+    if (eventId === "winter") self.joy = Math.max(0, self.joy - 0.05);
+    if (eventId === "thaw")   self.joy = Math.min(1, self.joy + 0.08);
+  },
 };
 
 // ----- 7. BUBBLE — Deep Jelly -----------------------------------------------
@@ -542,6 +580,13 @@ const bubble = {
     world.events.run("memoryBubble", { x: actor.mesh.position.x, z: actor.mesh.position.z, memory });
     world.toast(actor.name + " releases a bubble. Click it before it drifts away.");
     world.discover(actor.id, "Memory released: " + memory);
+  },
+  reactTo(eventId, world, self) {
+    // Curious drifter — bobs higher to look at strange things.
+    if (eventId === "ufo" || eventId === "auroraBorealis" || eventId === "meteor") {
+      self.joy = Math.min(1, self.joy + 0.05);
+    }
+    if (eventId === "winter") self.joy = Math.max(0, self.joy - 0.04);
   },
 };
 
@@ -616,6 +661,12 @@ const ember = {
     world.toast(actor.name + " burns away — and returns " + describeColor(newColor) + ".");
     world.discover(actor.id, "Reborn as " + describeColor(newColor) + ".");
   },
+  reactTo(eventId, world, self) {
+    // He IS the sun's apprentice. An eclipse staggers him.
+    if (eventId === "eclipse") self.joy = Math.max(0, self.joy - 0.12);
+    if (eventId === "meteor")  self.joy = Math.min(1, self.joy + 0.08);
+    if (eventId === "winter")  self.joy = Math.max(0, self.joy - 0.06);
+  },
 };
 
 function describeColor(hex) {
@@ -676,6 +727,12 @@ const solis = {
     world.cycleTime();
     world.toast(actor.name + " turns the day on its hinge.");
     world.discover(actor.id, "Bent time forward.");
+  },
+  reactTo(eventId, world, self) {
+    // The First Egg has seen everything; she joys at cosmic visits gently.
+    if (eventId === "ufo" || eventId === "firstContact" || eventId === "auroraBorealis" || eventId === "meteor" || eventId === "eclipse") {
+      self.joy = Math.min(1, self.joy + 0.04);
+    }
   },
 };
 
