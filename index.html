@@ -5,77 +5,33 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <title>BlueChicken · The Hatchling World</title>
     <link rel="stylesheet" href="styles.css" />
+    <!-- three.js + addons via importmap. Loaded from a CDN, no build step required.
+         If you're offline, swap the URLs for a local copy of the same files. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three":          "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/":  "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+    </script>
   </head>
   <body>
-    <!-- The world is one full-viewport stage. Everything is layered SVG/CSS so it
-         scales crisply. The canvas behind handles weather particles and ambient
-         drift; the SVG layer in front holds the characters and their eggs. -->
-    <main id="stage" aria-label="A dynamic world where you hatch and play with characters">
-      <canvas id="weather" aria-hidden="true"></canvas>
+    <main id="stage" aria-label="A living 3D world where hatchlings roam and events visit">
+      <canvas id="webgl"></canvas>
 
-      <svg id="sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-        <defs>
-          <radialGradient id="sun-glow" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0%" stop-color="#ffefb0" stop-opacity="1" />
-            <stop offset="60%" stop-color="#ffd36b" stop-opacity="0.6" />
-            <stop offset="100%" stop-color="#ffd36b" stop-opacity="0" />
-          </radialGradient>
-          <radialGradient id="moon-glow" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0%" stop-color="#e8f0ff" stop-opacity="0.9" />
-            <stop offset="100%" stop-color="#e8f0ff" stop-opacity="0" />
-          </radialGradient>
-        </defs>
-        <g id="celestial"></g>
-        <g id="stars"></g>
-        <g id="constellations"></g>
-        <g id="distant-mountains">
-          <path d="M0 640 L160 480 L260 540 L380 430 L520 540 L640 470 L760 560 L880 470 L1020 540 L1160 460 L1300 540 L1440 470 L1600 540 L1600 900 L0 900 Z"
-                fill="#3d4a73" opacity="0.55" />
-          <path d="M0 700 L120 600 L240 660 L360 570 L500 660 L640 580 L780 670 L920 580 L1060 660 L1200 570 L1340 660 L1480 580 L1600 660 L1600 900 L0 900 Z"
-                fill="#2e3a5c" opacity="0.75" />
-        </g>
-      </svg>
-
-      <svg id="world" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <linearGradient id="ground-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#5a7a3e" />
-            <stop offset="100%" stop-color="#2f4220" />
-          </linearGradient>
-          <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#5fb5d9" />
-            <stop offset="100%" stop-color="#1e4f6b" />
-          </linearGradient>
-          <pattern id="grass" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
-            <path d="M2 14 L4 8 L6 14 M8 14 L10 6 L12 14" stroke="#7ea863" stroke-width="1" fill="none" opacity="0.6" />
-          </pattern>
-        </defs>
-
-        <!-- The ground is intentionally low and sweeping so characters have room. -->
-        <g id="ground-layer">
-          <path d="M0 760 Q 400 720 800 760 T 1600 760 L 1600 900 L 0 900 Z" fill="url(#ground-grad)" />
-          <rect x="0" y="760" width="1600" height="140" fill="url(#grass)" opacity="0.35" />
-          <ellipse cx="1180" cy="830" rx="240" ry="34" fill="url(#water-grad)" opacity="0.85" />
-          <ellipse cx="1180" cy="824" rx="232" ry="26" fill="none" stroke="#a7e3f3" stroke-width="2" opacity="0.55" />
-        </g>
-
-        <!-- Footprints, plants, riddles, etc. are added dynamically to this layer. -->
-        <g id="trail-layer"></g>
-        <g id="effect-layer"></g>
-        <g id="actor-layer"></g>
-      </svg>
-
-      <!-- Top status bar: time, weather, joy. Kept minimal so it doesn't crowd the scene. -->
+      <!-- Top status bar: time, weather, current event, hatched count. -->
       <header id="hud-top" role="status" aria-live="polite">
-        <div class="hud-pill" id="time-pill"><span class="hud-icon" id="time-icon">☀</span><span id="time-label">Dawn</span></div>
-        <div class="hud-pill" id="weather-pill"><span class="hud-icon" id="weather-icon">·</span><span id="weather-label">Calm</span></div>
+        <div class="hud-pill" id="time-pill"><span class="hud-icon" id="time-icon">☀</span><span id="time-label">Day</span></div>
+        <div class="hud-pill" id="weather-pill"><span class="hud-icon" id="weather-icon">·</span><span id="weather-label">Clear</span></div>
+        <div class="hud-pill" id="event-pill"><span class="hud-icon">⚑</span><span id="event-label">All quiet</span></div>
         <div class="hud-pill" id="joy-pill"><span class="hud-icon">♡</span><span id="joy-label">0 / 9 hatched</span></div>
       </header>
 
-      <!-- Roster strip along the bottom: locked slots fill in as you hatch. -->
+      <!-- Roster strip along the bottom. -->
       <footer id="roster" aria-label="Your hatchlings"></footer>
 
-      <!-- Floating side panel: shows the focused character's story & special ability. -->
+      <!-- Inspector panel. -->
       <aside id="inspector" hidden aria-live="polite">
         <button class="close" id="inspector-close" aria-label="Close">×</button>
         <h2 id="insp-name"></h2>
@@ -89,20 +45,25 @@
         <ul class="discoveries" id="insp-discoveries"></ul>
       </aside>
 
-      <!-- Toast for first hatches & discoveries. -->
       <div id="toast" role="status" aria-live="polite"></div>
 
-      <!-- First-run welcome. Dismisses on click anywhere. -->
+      <!-- Camera/interaction hints — fades after a few seconds. -->
+      <div id="controls-hint">
+        <span>Drag · look around</span>
+        <span>Scroll · zoom</span>
+        <span>Tap an egg · hatch</span>
+        <span>Tap a hatchling · pet</span>
+      </div>
+
       <section id="welcome" role="dialog" aria-modal="false">
         <h1>The Hatchling World</h1>
-        <p>Nine eggs are waiting. Tap one a few times — each holds a different soul, and each soul changes the world differently when it wakes.</p>
-        <p class="hint">Tap eggs to hatch · Click a hatchling to pet · Drag to carry · Use their special on the roster</p>
+        <p>A small valley with nine eggs waiting. Tap each six times to hatch it — every soul inside is different, and the world remembers each one.</p>
+        <p>Wolves wander in. UFOs drop by. Winter rolls through and igloos rise from the snow. The world doesn't stop happening to you.</p>
+        <p class="hint">Drag to look around · Scroll to zoom · Tap an egg six times to hatch</p>
         <button id="welcome-go">Begin</button>
       </section>
     </main>
 
-    <script src="characters.js"></script>
-    <script src="world.js"></script>
-    <script src="main.js"></script>
+    <script type="module" src="main3d.js"></script>
   </body>
 </html>

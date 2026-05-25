@@ -1,12 +1,7 @@
-/* The whole game is a single full-viewport stage; everything else is layered on top
-   with absolute positioning. We avoid scroll so the world always feels framed. */
+/* The whole game is a single full-viewport stage; the WebGL canvas fills it
+   and all UI floats over it as DOM. Avoid scrolling so the world feels framed. */
 
 :root {
-  --sky-dawn:   linear-gradient(180deg, #ffcaa3 0%, #ffb1c1 35%, #b8a4d8 70%, #5d6ba8 100%);
-  --sky-day:    linear-gradient(180deg, #7ec8f0 0%, #aedcf2 55%, #d6efff 100%);
-  --sky-dusk:   linear-gradient(180deg, #2b1d54 0%, #6e3a73 35%, #d27a5a 75%, #f0b27a 100%);
-  --sky-night:  linear-gradient(180deg, #06081e 0%, #0d1535 50%, #1a2354 100%);
-
   --ink:        #0e1226;
   --paper:      #f8f3e7;
   --gold:       #f4c95d;
@@ -37,28 +32,17 @@ html, body {
 #stage {
   position: fixed;
   inset: 0;
-  background: var(--sky-day);
-  transition: background 4s var(--ease-soft);
   overflow: hidden;
-  cursor: default;
 }
 
-/* Time-of-day classes drive the sky. They live on #stage and are swapped by world.js. */
-#stage.time-dawn   { background: var(--sky-dawn); }
-#stage.time-day    { background: var(--sky-day); }
-#stage.time-dusk   { background: var(--sky-dusk); }
-#stage.time-night  { background: var(--sky-night); }
-
-#weather, #sky, #world {
+#webgl {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
+  touch-action: none;
 }
-#weather { z-index: 1; pointer-events: none; }
-#sky     { z-index: 2; pointer-events: none; }
-#world   { z-index: 3; }
 
 /* --- HUD -------------------------------------------------------------------- */
 
@@ -71,6 +55,9 @@ html, body {
   gap: 10px;
   z-index: 10;
   pointer-events: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100vw - 24px);
 }
 
 .hud-pill {
@@ -88,6 +75,8 @@ html, body {
   color: var(--paper);
 }
 .hud-icon { font-size: 16px; line-height: 1; }
+
+#event-pill { background: rgba(244, 201, 93, 0.18); border-color: rgba(244, 201, 93, 0.35); }
 
 /* --- Roster ----------------------------------------------------------------- */
 
@@ -113,41 +102,61 @@ html, body {
 
 .slot {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  min-width: 64px;
+  height: 64px;
   border-radius: 14px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.06);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: transform 0.2s var(--ease-soft), background 0.2s var(--ease-soft);
+  padding: 6px 4px 4px;
   flex: 0 0 auto;
 }
-.slot:hover    { background: rgba(255,255,255,0.10); transform: translateY(-2px); }
-.slot.locked   { cursor: default; filter: grayscale(1) brightness(0.7); }
-.slot.locked:hover { transform: none; background: rgba(255,255,255,0.04); }
-.slot.active   { background: rgba(244,201,93,0.18); border-color: var(--gold); box-shadow: 0 0 0 3px rgba(244,201,93,0.15); }
-.slot svg      { width: 42px; height: 42px; pointer-events: none; }
+.slot:hover         { background: rgba(255,255,255,0.10); transform: translateY(-2px); }
+.slot.locked        { cursor: default; filter: grayscale(0.6) brightness(0.65); }
+.slot.locked:hover  { transform: none; background: rgba(255,255,255,0.04); }
+.slot.active        { background: rgba(244,201,93,0.18); border-color: var(--gold); box-shadow: 0 0 0 3px rgba(244,201,93,0.15); }
 
-/* The "special move" floats above the slot like a button. */
+.slot-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  box-shadow: inset 0 -6px 0 rgba(0,0,0,0.15), 0 1px 0 rgba(255,255,255,0.2);
+}
+.slot-name {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  white-space: nowrap;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .slot .pip {
   position: absolute;
   top: -6px;
   right: -6px;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--gold);
   color: #1a1208;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
+.slot .pip:hover { transform: scale(1.1); }
 
 /* --- Inspector panel --------------------------------------------------------- */
 
@@ -258,8 +267,29 @@ html, body {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.4s var(--ease-soft), transform 0.4s var(--ease-soft);
+  max-width: 80vw;
+  text-align: center;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- Controls hint ---------------------------------------------------------- */
+
+#controls-hint {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.7);
+  font-style: italic;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  transition: opacity 1.2s var(--ease-soft);
+  pointer-events: none;
+}
+#controls-hint.fade { opacity: 0; }
 
 /* --- Welcome ---------------------------------------------------------------- */
 
@@ -283,7 +313,7 @@ html, body {
   letter-spacing: 0.01em;
 }
 #welcome p {
-  max-width: 460px;
+  max-width: 480px;
   font-size: 16px;
   line-height: 1.55;
   opacity: 0.92;
@@ -306,149 +336,13 @@ html, body {
 #welcome button:hover  { transform: scale(1.04); }
 #welcome button:active { transform: scale(0.98); }
 
-/* --- World actors ----------------------------------------------------------- */
-
-/* IMPORTANT: outer .actor / .egg / .bubble / .flame / .flower-fx / .hatch-burst
-   carry an SVG inline transform="translate(x,y) ..." that places them in the
-   world. CSS animations on the SAME element would override that inline
-   transform and snap them to (0,0). So we always wrap the animated content in
-   an inner *-art / *-inner group and animate THAT. The inner group has no
-   inline transform, so the CSS animation composes correctly with the parent. */
-
-.actor          { cursor: grab; transition: filter 0.3s ease; }
-.actor.grabbing { cursor: grabbing; }
-.actor.asleep   { opacity: 0.7; }
-.actor-art      { transform-box: fill-box; transform-origin: center; }
-.actor.petted .actor-art { animation: pet-bounce 0.45s var(--ease-soft); }
-@keyframes pet-bounce {
-  0%   { transform: translateY(0) scale(1); }
-  40%  { transform: translateY(-12px) scale(1.06); }
-  100% { transform: translateY(0) scale(1); }
-}
-
-.egg     { cursor: pointer; }
-.egg-art { transform-box: fill-box; transform-origin: center; }
-.egg.wiggle .egg-art { animation: egg-wiggle 0.55s ease-in-out; }
-@keyframes egg-wiggle {
-  0%, 100% { transform: rotate(0); }
-  20% { transform: rotate(-9deg); }
-  50% { transform: rotate(11deg); }
-  80% { transform: rotate(-5deg); }
-}
-.egg.crack-1 .crack-1, .egg.crack-2 .crack-1, .egg.crack-2 .crack-2,
-.egg.crack-3 .crack-1, .egg.crack-3 .crack-2, .egg.crack-3 .crack-3 { opacity: 1; }
-.crack-1, .crack-2, .crack-3 { opacity: 0; transition: opacity 0.4s ease; }
-
-.hatch-burst       { pointer-events: none; }
-.hatch-burst-inner { transform-box: fill-box; transform-origin: center; animation: burst 1s var(--ease-soft) forwards; }
-@keyframes burst {
-  0%   { transform: scale(0.2); opacity: 0; }
-  30%  { transform: scale(1.0); opacity: 1; }
-  100% { transform: scale(2.0); opacity: 0; }
-}
-
-.footprint { pointer-events: none; animation: footfade 6s linear forwards; }
-@keyframes footfade { 0% { opacity: 0.85; } 100% { opacity: 0; } }
-
-.bubble       { cursor: pointer; }
-.bubble-inner { transform-box: fill-box; transform-origin: center; animation: bubble-float 8s linear forwards; }
-.bubble.pop .bubble-inner { animation: bubble-pop 0.3s ease forwards; }
-@keyframes bubble-float {
-  from { transform: translateY(0); }
-  to   { transform: translateY(-700px); }
-}
-@keyframes bubble-pop {
-  0%   { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.8); opacity: 0; }
-}
-
-.memory {
-  pointer-events: none;
-  animation: memory-rise 3s ease-out forwards;
-}
-@keyframes memory-rise {
-  0%   { transform: translateY(0); opacity: 0; }
-  20%  { opacity: 1; }
-  100% { transform: translateY(-60px); opacity: 0; }
-}
-
-.raindrop {
-  pointer-events: none;
-  animation: rain-fall 1.2s linear forwards;
-}
-@keyframes rain-fall {
-  from { transform: translateY(0); opacity: 0.7; }
-  to   { transform: translateY(420px); opacity: 0; }
-}
-
-.flower-inner {
-  transform-box: fill-box;
-  transform-origin: bottom center;
-  animation: bloom 1.2s var(--ease-soft) forwards;
-}
-@keyframes bloom {
-  from { transform: scale(0); }
-  to   { transform: scale(1); }
-}
-
-.riddle {
-  pointer-events: none;
-  fill: #e8d8ff;
-  font-family: "Cochin", Georgia, serif;
-  font-style: italic;
-  font-size: 14px;
-  animation: riddle-fade 5s ease-out forwards;
-}
-@keyframes riddle-fade {
-  0%   { opacity: 0; transform: translateY(0); }
-  20%  { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-40px); }
-}
-
-.rainbow-arc {
-  pointer-events: none;
-  fill: none;
-  stroke-width: 6;
-  stroke-linecap: round;
-  animation: rainbow-fade 4s ease-out forwards;
-}
-@keyframes rainbow-fade {
-  0%   { opacity: 0; stroke-dasharray: 0 1000; }
-  40%  { opacity: 0.9; stroke-dasharray: 1000 1000; }
-  100% { opacity: 0; }
-}
-
-.constellation {
-  pointer-events: none;
-  stroke: #cfe0ff;
-  stroke-width: 1.5;
-  fill: none;
-  opacity: 0.7;
-  animation: const-draw 6s ease-out forwards;
-}
-.constellation circle { fill: #fffbe6; }
-@keyframes const-draw {
-  0%   { stroke-dasharray: 0 600; opacity: 0; }
-  40%  { stroke-dasharray: 600 600; opacity: 0.85; }
-  100% { opacity: 0; }
-}
-
-.flame { pointer-events: none; }
-.flame-inner {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: flame-rise 2s ease-out forwards;
-}
-@keyframes flame-rise {
-  0%   { transform: translateY(0) scale(1); opacity: 0.9; }
-  100% { transform: translateY(-80px) scale(0.2); opacity: 0; }
-}
-
 /* --- Phones --------------------------------------------------------------- */
 
 @media (max-width: 600px) {
   #inspector { right: 8px; left: 8px; width: auto; top: 56px; }
-  .hud-pill { font-size: 12px; padding: 6px 10px; }
-  .slot     { width: 48px; height: 48px; }
-  .slot svg { width: 36px; height: 36px; }
+  .hud-pill  { font-size: 12px; padding: 6px 10px; }
+  .slot      { width: 54px; min-width: 54px; height: 54px; padding: 4px; }
+  .slot-swatch { width: 26px; height: 26px; }
+  .slot-name   { font-size: 9px; max-width: 50px; }
+  #controls-hint { left: 8px; bottom: 8px; font-size: 11px; }
 }
