@@ -69,6 +69,10 @@ export class World {
     this.discoveries = {};  // id -> string[]
     this.bubbles = [];      // memory bubbles (for click pick)
     this.flags = {};        // event flags (e.g. ufo seen)
+    this.hatched = {};      // id -> true; rehydrated from localStorage on boot
+
+    // localStorage key. Bump if the snapshot shape ever breaks back-compat.
+    this._saveKey = "bluechicken/hatchling-world/v1";
 
     this.updaters = []; // per-frame callbacks registered by events
 
@@ -394,6 +398,127 @@ export class World {
     this.starMat.opacity += (targetOpacity - this.starMat.opacity) * 0.02;
   }
 
+  // ---- hatch burst -------------------------------------------------------
+
+  // Painted radial-rays texture — generated once on first hatch and cached.
+  _getBurstTexture() {
+    if (this._burstTex) return this._burstTex;
+    const size = 512;
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    const cx = size / 2, cy = size / 2;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+    grad.addColorStop(0.00, "rgba(255,250,220,1)");
+    grad.addColorStop(0.18, "rgba(255,232,150,0.85)");
+    grad.addColorStop(0.45, "rgba(255,200,80,0.35)");
+    grad.addColorStop(1.00, "rgba(255,180,40,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    ctx.translate(cx, cy);
+    for (let i = 0; i < 22; i++) {
+      const ang = (i / 22) * Math.PI * 2 + (Math.random() - 0.5) * 0.06;
+      const len = size * (0.32 + Math.random() * 0.16);
+      const wid = 12 + Math.random() * 16;
+      ctx.save();
+      ctx.rotate(ang);
+      const g2 = ctx.createLinearGradient(0, 0, len, 0);
+      g2.addColorStop(0, "rgba(255,250,220,0.85)");
+      g2.addColorStop(1, "rgba(255,210,120,0)");
+      ctx.fillStyle = g2;
+      ctx.beginPath();
+      ctx.moveTo(0, -wid / 2);
+      ctx.quadraticCurveTo(len * 0.55, 0, len, 0);
+      ctx.quadraticCurveTo(len * 0.55, 0, 0, wid / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this._burstTex = tex;
+    return tex;
+  }
+
+  // The hatch moment: painted-rays sprite expands + a brief warm point light
+  // paints the surroundings + eggshell pieces arc out under gravity. The
+  // shell colors are drawn from the character's palette so the moment feels
+  // tied to the soul that just emerged.
+  _hatchBurst(pos, palette) {
+    const haloMat = new THREE.SpriteMaterial({
+      map: this._getBurstTexture(),
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const halo = new THREE.Sprite(haloMat);
+    halo.position.copy(pos);
+    halo.scale.setScalar(0.5);
+    this.scene.add(halo);
+
+    const flash = new THREE.PointLight(0xffe5a0, 6, 14, 2);
+    flash.position.copy(pos).add(new THREE.Vector3(0, 0.4, 0));
+    this.scene.add(flash);
+
+    const shells = [];
+    const shellColors = [palette.body, palette.belly || palette.body, 0xfff4d8, 0xfff4d8];
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * Math.PI * 2 + rand(-0.1, 0.1);
+      const speed = rand(2.6, 4.6);
+      const vy = rand(2.6, 5.4);
+      const piece = new THREE.Mesh(
+        new THREE.CircleGeometry(rand(0.06, 0.12), 5),
+        new THREE.MeshBasicMaterial({
+          color: shellColors[i % shellColors.length],
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 1,
+        })
+      );
+      piece.position.copy(pos);
+      piece.userData.vx = Math.cos(ang) * speed;
+      piece.userData.vz = Math.sin(ang) * speed;
+      piece.userData.vy = vy;
+      piece.userData.spin = rand(-8, 8);
+      piece.userData.rotAxis = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize();
+      this.scene.add(piece);
+      shells.push(piece);
+    }
+
+    const tStart = performance.now();
+    const dur = 1200;
+    const gravity = 9.8;
+    const step = () => {
+      const now = performance.now();
+      const dt = (now - tStart) / 1000;
+      const t = Math.min(1, (now - tStart) / dur);
+      halo.scale.setScalar(0.5 + t * 6);
+      haloMat.opacity = 0.95 * (1 - t);
+      haloMat.rotation = t * 0.35;
+      flash.intensity = 6 * (1 - t) * (1 - t);
+      for (const p of shells) {
+        p.position.x = pos.x + p.userData.vx * dt;
+        p.position.z = pos.z + p.userData.vz * dt;
+        p.position.y = pos.y + p.userData.vy * dt - 0.5 * gravity * dt * dt;
+        p.rotateOnAxis(p.userData.rotAxis, p.userData.spin * 0.016);
+        if (p.position.y < 0.02) {
+          p.position.y = 0.02;
+          p.userData.vy *= -0.35; p.userData.vx *= 0.6; p.userData.vz *= 0.6;
+        }
+        p.material.opacity = 1 - t * 0.6;
+      }
+      if (t < 1) requestAnimationFrame(step);
+      else {
+        this.scene.remove(halo);
+        this.scene.remove(flash);
+        for (const p of shells) this.scene.remove(p);
+      }
+    };
+    requestAnimationFrame(step);
+  }
+
   // ---- asset preloading --------------------------------------------------
 
   // Kick off GLB + portrait-texture loads for every character. Both are
@@ -482,23 +607,7 @@ export class World {
     const egg = this.eggs[charId];
     if (!egg) return null;
     const pos = egg.mesh.position.clone();
-    // burst
-    const burst = new THREE.Mesh(
-      new THREE.SphereGeometry(0.6, 16, 12),
-      new THREE.MeshBasicMaterial({ color: 0xfff8d0, transparent: true, opacity: 0.9 })
-    );
-    burst.position.copy(pos);
-    this.scene.add(burst);
-    const tStart = performance.now();
-    const step = () => {
-      const t = Math.min(1, (performance.now() - tStart) / 700);
-      const s = 0.5 + t * 3.5;
-      burst.scale.setScalar(s);
-      burst.material.opacity = 0.9 * (1 - t);
-      if (t < 1) requestAnimationFrame(step);
-      else this.scene.remove(burst);
-    };
-    requestAnimationFrame(step);
+    this._hatchBurst(pos, egg.charDef.palette);
 
     this.scene.remove(egg.mesh);
     delete this.eggs[charId];
@@ -506,6 +615,8 @@ export class World {
     const actor = this._spawnActor(egg.charDef, pos);
     this.toast(egg.charDef.name + " has hatched.");
     this.discover(egg.charDef.id, "Hatched at " + this.timeName() + ".");
+    this.hatched[charId] = true;
+    this._persist();
     return actor;
   }
 
@@ -832,7 +943,7 @@ export class World {
     this._toastTimer = setTimeout(() => this.toastEl.classList.remove("show"), 3600);
   }
   setEventLabel(label) { this.eventLabel.textContent = label; }
-  flagSeen(flag) { this.flags[flag] = true; }
+  flagSeen(flag) { this.flags[flag] = true; this._persist(); }
   hasFlag(flag) { return !!this.flags[flag]; }
 
   discover(id, line) {
@@ -840,6 +951,54 @@ export class World {
     if (arr[0] !== line) arr.unshift(line);
     if (arr.length > 12) arr.length = 12;
     if (this.focus && this.focus.id === id) this._refreshInspector();
+    this._persist();
+  }
+
+  // ---- persistence -------------------------------------------------------
+
+  // Save a tiny snapshot of state worth surviving a refresh: who's hatched,
+  // each character's joy, what's been discovered, what flags fired. Written
+  // every time those mutate. Keeps the world's promise that "the world
+  // remembers" actually true.
+  _persist() {
+    if (typeof localStorage === "undefined") return;
+    try {
+      const actorState = {};
+      for (const a of this.actors) actorState[a.id] = { joy: a.joy, mood: a.mood };
+      const snap = {
+        v: 1,
+        hatched: this.hatched,
+        actors: actorState,
+        discoveries: this.discoveries,
+        flags: this.flags,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(this._saveKey, JSON.stringify(snap));
+    } catch (_e) { /* quota / private-mode — silently ignore */ }
+  }
+
+  // Read the snapshot. main3d.js calls this after preload and decides which
+  // characters to rehydrate as actors instead of placing as eggs.
+  loadSnapshot() {
+    if (typeof localStorage === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(this._saveKey);
+      if (!raw) return null;
+      const snap = JSON.parse(raw);
+      if (!snap || snap.v !== 1) return null;
+      // Restore the easy stuff right now; main3d uses snap.hatched to decide
+      // egg vs actor placement.
+      this.hatched = snap.hatched || {};
+      this.discoveries = snap.discoveries || {};
+      this.flags = snap.flags || {};
+      this._loadedActors = snap.actors || {};
+      return snap;
+    } catch (_e) { return null; }
+  }
+
+  resetSave() {
+    if (typeof localStorage === "undefined") return;
+    try { localStorage.removeItem(this._saveKey); } catch (_e) {}
   }
 
   focusActor(actor) {

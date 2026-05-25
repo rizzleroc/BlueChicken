@@ -5,9 +5,10 @@
 // compose into per-event cues. Game code calls audio.hatch(), audio.ufoSwoop(),
 // etc.; main3d.js wires the few touch points.
 //
-// The browser blocks AudioContext from starting until a user gesture, so the
-// engine stays in a `suspended` state until init() runs from a click. We also
-// start muted by default and expose setMuted() — the game's HUD has a toggle.
+// AudioContext can't start until a user gesture. We auto-init on the very
+// first pointerdown / keydown anywhere so an event firing before the user
+// has explicitly clicked "Begin" or the audio toggle still gets sound. The
+// engine still starts muted; toggling the HUD button unmutes.
 
 export class AudioEngine {
   constructor() {
@@ -16,9 +17,22 @@ export class AudioEngine {
     this.muted = true;  // start muted; user opts in
     this.started = false;
     this.ambientNodes = null;
+    // Capture-phase one-shot listeners so any user gesture brings up the
+    // context, not just the welcome-screen button. Once started, removed.
+    if (typeof document !== "undefined") {
+      const arm = () => {
+        this.init();
+        document.removeEventListener("pointerdown", arm, true);
+        document.removeEventListener("keydown", arm, true);
+        document.removeEventListener("touchstart", arm, true);
+      };
+      document.addEventListener("pointerdown", arm, true);
+      document.addEventListener("keydown", arm, true);
+      document.addEventListener("touchstart", arm, true);
+    }
   }
 
-  // Must be called from a user-gesture handler (welcome dismiss, mute click).
+  // Idempotent — safe to call from any gesture handler.
   init() {
     if (this.ctx) return;
     const Ctx = window.AudioContext || window.webkitAudioContext;

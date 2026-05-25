@@ -47,24 +47,57 @@ const world = new World({ renderer, scene, camera });
 world.audio = audio;
 window.__world = world;
 
-// Try to preload Tripo-generated GLB models for every character. Missing files
-// are silently fine — the procedural three.js mesh is used as fallback. This
-// runs in parallel with everything else; the loader fires the first time a
-// character is spawned, so a slow GLB load doesn't block the welcome screen.
-world.preloadModels(CHARACTERS);
+// Preload painted portrait textures (and any GLBs if they exist). Missing
+// files are silently fine — the procedural mesh is used as fallback. Once
+// the textures land, any actor we already spawned (from a restored session)
+// gets rebuilt as a sprite so it doesn't stay stuck in the procedural fallback.
+world.preloadModels(CHARACTERS).then(() => {
+  for (const actor of world.actors) {
+    if (actor.mesh && !actor.mesh.userData.isSpriteActor) {
+      world.rebuildActor(actor);
+    }
+  }
+});
 
-// ---- Eggs in a circle around the center ----------------------------------
+// ---- Restore prior session, then place remaining eggs --------------------
 
 const PUBLIC_CHARS = CHARACTERS.filter((c) => !c.secret);
 const SECRET = CHARACTERS.find((c) => c.secret);
 let solisRevealed = false;
 
+// Read any persisted state from a prior session (hatched ids, discoveries,
+// flags). After this call, world.hatched is populated; we use it to decide
+// whether each character should appear as an egg or be respawned directly.
+const snap = world.loadSnapshot();
+
 PUBLIC_CHARS.forEach((c, i) => {
   const ang = (i / PUBLIC_CHARS.length) * Math.PI * 2;
   const r = 10;
-  const y = c.flying ? 8 : c.floating ? 2 : 0.55;
-  world.placeEgg(c, new THREE.Vector3(Math.cos(ang) * r, y, Math.sin(ang) * r));
+  if (world.hatched && world.hatched[c.id]) {
+    // Previously hatched — respawn at a random spot inside the home ring with
+    // their persisted joy/mood. Do this after preload finishes so sprites land.
+    const restorePos = new THREE.Vector3(Math.cos(ang) * r * 0.6, 0, Math.sin(ang) * r * 0.6);
+    const actor = world._spawnActor(c, restorePos);
+    const saved = world._loadedActors && world._loadedActors[c.id];
+    if (saved) {
+      if (typeof saved.joy === "number") actor.joy = saved.joy;
+      if (saved.mood) actor.mood = saved.mood;
+    }
+    refreshRosterFor(actor);
+  } else {
+    const y = c.flying ? 8 : c.floating ? 2 : 0.55;
+    world.placeEgg(c, new THREE.Vector3(Math.cos(ang) * r, y, Math.sin(ang) * r));
+  }
 });
+// If Solis was previously revealed, bring her back too.
+if (snap && snap.hatched && (snap.hatched[SECRET.id] || snap.flags?.solisRevealed)) {
+  solisRevealed = true;
+  if (world.hatched[SECRET.id]) {
+    world._spawnActor(SECRET, new THREE.Vector3(0, 0, 0));
+  } else {
+    world.placeEgg(SECRET, new THREE.Vector3(0, 2.5, 0));
+  }
+}
 
 // ---- Roster ---------------------------------------------------------------
 

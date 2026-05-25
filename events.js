@@ -103,12 +103,9 @@ const ufoVisit = {
     if (world.audio) world.audio.ufoSwoop();
     world.toast("Something silver moves above the trees…");
 
-    // Approach
+    // Approach — vector lerp on a per-frame rAF (Tween-on-throwaway-obj was a
+    // half-built helper from an earlier pass; removed to halve the approach time).
     const start = ufo.position.clone();
-    await tween({ t: 0 }, "t", 1, 4500, easeInOut).then(() => {
-      // (tween cb above doesn't get position; do it explicitly here)
-    });
-    // Actually move via a per-frame raf with vector lerp:
     await new Promise((resolve) => {
       const tStart = performance.now();
       const dur = 4000;
@@ -229,8 +226,8 @@ const firstContact = {
     alien.position.set(drop.x, 0.5, drop.z);
     alien.scale.setScalar(0.01);
     world.scene.add(alien);
-    await tween(alien.scale, "x", 1, 1200, easeInOut);
-    // (uniform scale up — set other axes after)
+    // Uniform scale-up (the earlier `tween(scale, "x", ...)` only mutated one
+    // axis and was about to be overwritten — removed).
     await new Promise((res) => {
       const start = performance.now();
       const dur = 1200;
@@ -444,6 +441,14 @@ const winterSequence = {
   label: "Winter sets in",
   weight: 3,
   async run(world) {
+    // Carry-over cleanup: dissolve any igloos left behind by a previous winter
+    // before raising new ones, so they don't accumulate forever.
+    if (world._winterIgloos && world._winterIgloos.length) {
+      for (const old of world._winterIgloos) {
+        if (old.parent) old.parent.remove(old);
+      }
+      world._winterIgloos = [];
+    }
     world.toast("A chill rolls down from the mountains.");
     if (world.audio) world.audio.freeze();
     world.setWeather("freezing");
@@ -698,7 +703,10 @@ const eclipse = {
 const characterSpecials = {
   constellation(world, args) {
     if (world.audio) world.audio.constellation();
-    // Draw a constellation high in the sky (visible best at night).
+    // Each constellation Aurora sings actually STAYS in the sky for the rest
+    // of the session — the bright initial draw fades to a soft permanent
+    // trace (~30% opacity). Auroras accumulate as a record of her song over
+    // the night. One concrete step toward "the world remembers your care."
     const N = 6 + Math.floor(Math.random() * 3);
     const cx = rand(-15, 15);
     const cz = rand(-15, 15);
@@ -706,27 +714,31 @@ const characterSpecials = {
     const pts = [];
     for (let i = 0; i < N; i++) pts.push(new THREE.Vector3(cx + rand(-6, 6), cy + rand(-3, 3), cz + rand(-4, 4)));
     const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xfff8c0, transparent: true, opacity: 0.9 });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xfff8c0, transparent: true, opacity: 0.95, depthWrite: false });
     const line = new THREE.LineSegments(lineGeo, lineMat);
     world.scene.add(line);
     const stars = new THREE.Group();
+    const starMats = [];
     for (const p of pts) {
-      const s = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), emissive(0xfff8c0, 2.5));
+      const m = emissive(0xfff8c0, 2.5);
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), m);
       s.position.copy(p);
       stars.add(s);
+      starMats.push(m);
     }
     world.scene.add(stars);
-    setTimeout(() => {
-      const start = performance.now();
-      const step = () => {
-        const t = Math.min(1, (performance.now() - start) / 2500);
-        lineMat.opacity = 0.9 * (1 - t);
-        stars.children.forEach((s) => (s.material.emissiveIntensity = 2.5 * (1 - t)));
-        if (t < 1) requestAnimationFrame(step);
-        else { world.scene.remove(line); world.scene.remove(stars); }
-      };
-      requestAnimationFrame(step);
-    }, 4000);
+    // Fade from "bright sing" to soft permanent trace, then leave it.
+    const start = performance.now() + 4000;
+    const step = () => {
+      const now = performance.now();
+      if (now < start) { requestAnimationFrame(step); return; }
+      const t = Math.min(1, (now - start) / 2500);
+      lineMat.opacity = 0.95 - 0.65 * t;  // 0.95 → 0.30
+      const ei = 2.5 - 2.0 * t;            // 2.5 → 0.5
+      for (const m of starMats) m.emissiveIntensity = ei;
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   },
 
   rainbow(world, args) {
