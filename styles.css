@@ -1,0 +1,454 @@
+/* The whole game is a single full-viewport stage; everything else is layered on top
+   with absolute positioning. We avoid scroll so the world always feels framed. */
+
+:root {
+  --sky-dawn:   linear-gradient(180deg, #ffcaa3 0%, #ffb1c1 35%, #b8a4d8 70%, #5d6ba8 100%);
+  --sky-day:    linear-gradient(180deg, #7ec8f0 0%, #aedcf2 55%, #d6efff 100%);
+  --sky-dusk:   linear-gradient(180deg, #2b1d54 0%, #6e3a73 35%, #d27a5a 75%, #f0b27a 100%);
+  --sky-night:  linear-gradient(180deg, #06081e 0%, #0d1535 50%, #1a2354 100%);
+
+  --ink:        #0e1226;
+  --paper:      #f8f3e7;
+  --gold:       #f4c95d;
+  --rose:       #ef89a8;
+  --leaf:       #6fb46a;
+
+  --hud-bg:     rgba(14, 18, 38, 0.55);
+  --hud-bg-hi:  rgba(14, 18, 38, 0.78);
+
+  --ease-soft:  cubic-bezier(.22,.61,.36,1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Cochin", "Iowan Old Style", "Palatino", Georgia, serif;
+  color: var(--paper);
+  background: #06081e;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  background: var(--sky-day);
+  transition: background 4s var(--ease-soft);
+  overflow: hidden;
+  cursor: default;
+}
+
+/* Time-of-day classes drive the sky. They live on #stage and are swapped by world.js. */
+#stage.time-dawn   { background: var(--sky-dawn); }
+#stage.time-day    { background: var(--sky-day); }
+#stage.time-dusk   { background: var(--sky-dusk); }
+#stage.time-night  { background: var(--sky-night); }
+
+#weather, #sky, #world {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#weather { z-index: 1; pointer-events: none; }
+#sky     { z-index: 2; pointer-events: none; }
+#world   { z-index: 3; }
+
+/* --- HUD -------------------------------------------------------------------- */
+
+#hud-top {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--hud-bg);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--paper);
+}
+.hud-icon { font-size: 16px; line-height: 1; }
+
+/* --- Roster ----------------------------------------------------------------- */
+
+#roster {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 18px;
+  background: var(--hud-bg);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.08);
+  z-index: 10;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#roster::-webkit-scrollbar { display: none; }
+
+.slot {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-soft), background 0.2s var(--ease-soft);
+  flex: 0 0 auto;
+}
+.slot:hover    { background: rgba(255,255,255,0.10); transform: translateY(-2px); }
+.slot.locked   { cursor: default; filter: grayscale(1) brightness(0.7); }
+.slot.locked:hover { transform: none; background: rgba(255,255,255,0.04); }
+.slot.active   { background: rgba(244,201,93,0.18); border-color: var(--gold); box-shadow: 0 0 0 3px rgba(244,201,93,0.15); }
+.slot svg      { width: 42px; height: 42px; pointer-events: none; }
+
+/* The "special move" floats above the slot like a button. */
+.slot .pip {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #1a1208;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* --- Inspector panel --------------------------------------------------------- */
+
+#inspector {
+  position: absolute;
+  right: 18px;
+  top: 60px;
+  width: 290px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  background: var(--hud-bg-hi);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--paper);
+  z-index: 11;
+  animation: slide-in 0.35s var(--ease-soft);
+}
+@keyframes slide-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+#inspector .close {
+  position: absolute;
+  top: 8px; right: 10px;
+  background: none; border: 0; color: var(--paper);
+  font-size: 22px; line-height: 1; cursor: pointer; opacity: 0.6;
+}
+#inspector .close:hover { opacity: 1; }
+
+#inspector h2 { margin: 0 0 2px; font-size: 22px; letter-spacing: 0.01em; }
+#inspector .role { margin: 0 0 10px; opacity: 0.7; font-style: italic; font-size: 13px; }
+#inspector .story { margin: 0 0 14px; font-size: 14px; line-height: 1.45; opacity: 0.9; }
+
+#inspector .stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+#inspector .stats .k { opacity: 0.55; }
+#inspector .stats .v { opacity: 0.95; }
+#inspector .stats .bar {
+  grid-column: 2;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+#inspector .stats .bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--rose), var(--gold));
+  width: 0%;
+  transition: width 0.5s var(--ease-soft);
+}
+
+#inspector .special {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(244,201,93,0.45);
+  background: linear-gradient(180deg, rgba(244,201,93,0.18), rgba(244,201,93,0.06));
+  color: var(--paper);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.1s var(--ease-soft), background 0.2s var(--ease-soft);
+}
+#inspector .special:hover { background: linear-gradient(180deg, rgba(244,201,93,0.30), rgba(244,201,93,0.12)); }
+#inspector .special:active { transform: scale(0.98); }
+#inspector .special.cooling { opacity: 0.5; cursor: wait; }
+
+#inspector .discoveries {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  max-height: 110px;
+  overflow-y: auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+#inspector .discoveries li {
+  padding: 4px 0;
+  border-top: 1px dashed rgba(255,255,255,0.10);
+}
+#inspector .discoveries li:first-child { border-top: 0; }
+
+/* --- Toast ------------------------------------------------------------------ */
+
+#toast {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--hud-bg-hi);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease-soft), transform 0.4s var(--ease-soft);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- Welcome ---------------------------------------------------------------- */
+
+#welcome {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: radial-gradient(ellipse at center, rgba(6,8,30,0.55), rgba(6,8,30,0.85));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+  transition: opacity 0.6s var(--ease-soft);
+}
+#welcome.hide { opacity: 0; pointer-events: none; }
+#welcome h1 {
+  font-size: clamp(28px, 5vw, 48px);
+  margin: 0 0 16px;
+  letter-spacing: 0.01em;
+}
+#welcome p {
+  max-width: 460px;
+  font-size: 16px;
+  line-height: 1.55;
+  opacity: 0.92;
+  margin: 0 0 14px;
+}
+#welcome p.hint { font-size: 13px; opacity: 0.65; font-style: italic; }
+#welcome button {
+  margin-top: 14px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(244,201,93,0.6);
+  background: linear-gradient(180deg, rgba(244,201,93,0.30), rgba(244,201,93,0.08));
+  color: var(--paper);
+  font-family: inherit;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease-soft);
+}
+#welcome button:hover  { transform: scale(1.04); }
+#welcome button:active { transform: scale(0.98); }
+
+/* --- World actors ----------------------------------------------------------- */
+
+/* IMPORTANT: outer .actor / .egg / .bubble / .flame / .flower-fx / .hatch-burst
+   carry an SVG inline transform="translate(x,y) ..." that places them in the
+   world. CSS animations on the SAME element would override that inline
+   transform and snap them to (0,0). So we always wrap the animated content in
+   an inner *-art / *-inner group and animate THAT. The inner group has no
+   inline transform, so the CSS animation composes correctly with the parent. */
+
+.actor          { cursor: grab; transition: filter 0.3s ease; }
+.actor.grabbing { cursor: grabbing; }
+.actor.asleep   { opacity: 0.7; }
+.actor-art      { transform-box: fill-box; transform-origin: center; }
+.actor.petted .actor-art { animation: pet-bounce 0.45s var(--ease-soft); }
+@keyframes pet-bounce {
+  0%   { transform: translateY(0) scale(1); }
+  40%  { transform: translateY(-12px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.egg     { cursor: pointer; }
+.egg-art { transform-box: fill-box; transform-origin: center; }
+.egg.wiggle .egg-art { animation: egg-wiggle 0.55s ease-in-out; }
+@keyframes egg-wiggle {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(-9deg); }
+  50% { transform: rotate(11deg); }
+  80% { transform: rotate(-5deg); }
+}
+.egg.crack-1 .crack-1, .egg.crack-2 .crack-1, .egg.crack-2 .crack-2,
+.egg.crack-3 .crack-1, .egg.crack-3 .crack-2, .egg.crack-3 .crack-3 { opacity: 1; }
+.crack-1, .crack-2, .crack-3 { opacity: 0; transition: opacity 0.4s ease; }
+
+.hatch-burst       { pointer-events: none; }
+.hatch-burst-inner { transform-box: fill-box; transform-origin: center; animation: burst 1s var(--ease-soft) forwards; }
+@keyframes burst {
+  0%   { transform: scale(0.2); opacity: 0; }
+  30%  { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(2.0); opacity: 0; }
+}
+
+.footprint { pointer-events: none; animation: footfade 6s linear forwards; }
+@keyframes footfade { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+
+.bubble       { cursor: pointer; }
+.bubble-inner { transform-box: fill-box; transform-origin: center; animation: bubble-float 8s linear forwards; }
+.bubble.pop .bubble-inner { animation: bubble-pop 0.3s ease forwards; }
+@keyframes bubble-float {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-700px); }
+}
+@keyframes bubble-pop {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.memory {
+  pointer-events: none;
+  animation: memory-rise 3s ease-out forwards;
+}
+@keyframes memory-rise {
+  0%   { transform: translateY(0); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(-60px); opacity: 0; }
+}
+
+.raindrop {
+  pointer-events: none;
+  animation: rain-fall 1.2s linear forwards;
+}
+@keyframes rain-fall {
+  from { transform: translateY(0); opacity: 0.7; }
+  to   { transform: translateY(420px); opacity: 0; }
+}
+
+.flower-inner {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: bloom 1.2s var(--ease-soft) forwards;
+}
+@keyframes bloom {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+
+.riddle {
+  pointer-events: none;
+  fill: #e8d8ff;
+  font-family: "Cochin", Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  animation: riddle-fade 5s ease-out forwards;
+}
+@keyframes riddle-fade {
+  0%   { opacity: 0; transform: translateY(0); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-40px); }
+}
+
+.rainbow-arc {
+  pointer-events: none;
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  animation: rainbow-fade 4s ease-out forwards;
+}
+@keyframes rainbow-fade {
+  0%   { opacity: 0; stroke-dasharray: 0 1000; }
+  40%  { opacity: 0.9; stroke-dasharray: 1000 1000; }
+  100% { opacity: 0; }
+}
+
+.constellation {
+  pointer-events: none;
+  stroke: #cfe0ff;
+  stroke-width: 1.5;
+  fill: none;
+  opacity: 0.7;
+  animation: const-draw 6s ease-out forwards;
+}
+.constellation circle { fill: #fffbe6; }
+@keyframes const-draw {
+  0%   { stroke-dasharray: 0 600; opacity: 0; }
+  40%  { stroke-dasharray: 600 600; opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
+.flame { pointer-events: none; }
+.flame-inner {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: flame-rise 2s ease-out forwards;
+}
+@keyframes flame-rise {
+  0%   { transform: translateY(0) scale(1); opacity: 0.9; }
+  100% { transform: translateY(-80px) scale(0.2); opacity: 0; }
+}
+
+/* --- Phones --------------------------------------------------------------- */
+
+@media (max-width: 600px) {
+  #inspector { right: 8px; left: 8px; width: auto; top: 56px; }
+  .hud-pill { font-size: 12px; padding: 6px 10px; }
+  .slot     { width: 48px; height: 48px; }
+  .slot svg { width: 36px; height: 36px; }
+}
