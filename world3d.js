@@ -59,6 +59,7 @@ export class World {
     this.scene.fog = new THREE.Fog(this.fogColors.day.getHex(), 25, 70);
 
     this._buildLights();
+    this._buildSkyDome();
     this._buildGround();
     this._scatterScenery();
     this._buildStars();
@@ -71,11 +72,15 @@ export class World {
 
     this.updaters = []; // per-frame callbacks registered by events
 
-    // GLB cache: character-id -> THREE.Group (cloned per spawn). Populated by
-    // preloadModels() on boot. Missing entries fall back to the procedural mesh
-    // built by the character's buildBody().
+    // Asset caches. modelCache is GLBs (Tripo path), spriteCache is the
+    // portrait textures we use to render characters as painted billboards in
+    // the 3D scene (Don't-Starve / Paper-Mario style cutouts). Whichever is
+    // available is preferred over the procedural buildBody() fallback —
+    // _buildActorMesh decides at spawn time.
     this.modelCache = {};
+    this.spriteCache = {};
     this.gltfLoader = new GLTFLoader();
+    this.textureLoader = new THREE.TextureLoader();
 
     this.events = new EventDirector(this);
 
@@ -115,6 +120,38 @@ export class World {
     this.scene.add(this.sun);
   }
 
+  // Inverted sphere with a per-vertex gradient. We store the vertical "height
+  // ratio" per vertex once at boot in this._skyT (NOT in the color attribute,
+  // which is going to be repeatedly overwritten with actual colors each frame),
+  // then in _applyTimeBlend we sample sky-top/horizon colors and lerp by t
+  // into the color attribute.
+  _buildSkyDome() {
+    const geom = new THREE.SphereGeometry(120, 32, 16);
+    const n = geom.attributes.position.count;
+    const colors = new Float32Array(n * 3);
+    this._skyT = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const y = geom.attributes.position.getY(i);
+      const t = THREE.MathUtils.clamp((y + 120) / 240, 0, 1); // 0 horizon, 1 zenith
+      this._skyT[i] = t;
+      colors[i * 3 + 0] = t;
+      colors[i * 3 + 1] = t;
+      colors[i * 3 + 2] = t;
+    }
+    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+    this.skyDome = new THREE.Mesh(geom, mat);
+    this.skyDome.renderOrder = -1;
+    this.scene.add(this.skyDome);
+    this.skyTop = new THREE.Color(0x6aa9e3);
+    this.skyBottom = new THREE.Color(0xc8e6f7);
+  }
+
   _buildGround() {
     // Round disc of ground with subtle vertex noise for organic shape.
     const geom = new THREE.CircleGeometry(GROUND_RADIUS, 64);
@@ -124,24 +161,107 @@ export class World {
       const x = pos.getX(i);
       const z = pos.getZ(i);
       const r = Math.hypot(x, z);
-      // small lumps, none in the middle
       const lump = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.2 + Math.sin(r * 0.6) * 0.15;
       pos.setY(i, r < GROUND_RADIUS - 2 ? lump : -0.05);
     }
     geom.computeVertexNormals();
-    this.ground = new THREE.Mesh(geom, std(0x5e8c45));
+
+    // Procedural painted texture for the ground — a canvas covered in
+    // overlapping splotches of varied greens, with occasional dirt and
+    // wildflower-color patches. Generated once at boot.
+    const tex = this._makePaintedGroundTexture();
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex, roughness: 0.95, metalness: 0.0,
+    });
+    this.ground = new THREE.Mesh(geom, mat);
     this.ground.receiveShadow = true;
     this.scene.add(this.ground);
 
-    // A small pond.
+    // Pond — same kind of painted texture, blue palette, slightly glossy.
+    const pondTex = this._makePaintedPondTexture();
     const pond = new THREE.Mesh(
       new THREE.CircleGeometry(3.2, 32),
-      new THREE.MeshStandardMaterial({ color: 0x4ba5cb, roughness: 0.1, metalness: 0.2 })
+      new THREE.MeshStandardMaterial({
+        map: pondTex, roughness: 0.25, metalness: 0.15,
+      })
     );
     pond.rotation.x = -Math.PI / 2;
     pond.position.set(8, 0.02, -6);
     pond.receiveShadow = true;
     this.scene.add(pond);
+  }
+
+  // Draw a brush-stroke ground onto an offscreen canvas. Many overlapping
+  // soft circles of slightly-varied greens give the painterly feel, plus a
+  // handful of warm and floral accents.
+  _makePaintedGroundTexture() {
+    const size = 1024;
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    // base wash
+    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size * 0.55);
+    grad.addColorStop(0, "#69954b");
+    grad.addColorStop(1, "#3f5a30");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    // grass splotches
+    const greens = ["#5a8a3a", "#79a655", "#3f6128", "#88b466", "#4e7a36", "#a3c378"];
+    for (let i = 0; i < 1400; i++) {
+      ctx.fillStyle = greens[Math.floor(Math.random() * greens.length)];
+      ctx.globalAlpha = 0.22 + Math.random() * 0.4;
+      const x = Math.random() * size, y = Math.random() * size;
+      const r = 8 + Math.random() * 38;
+      ctx.beginPath(); ctx.ellipse(x, y, r, r * (0.6 + Math.random() * 0.7), Math.random() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+    // dirt patches
+    ctx.globalAlpha = 0.35;
+    const dirts = ["#6b4a2a", "#7a5a36", "#553820"];
+    for (let i = 0; i < 70; i++) {
+      ctx.fillStyle = dirts[Math.floor(Math.random() * dirts.length)];
+      const x = Math.random() * size, y = Math.random() * size;
+      const r = 8 + Math.random() * 22;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+    // wildflower specks
+    ctx.globalAlpha = 0.75;
+    const flowers = ["#ffd1e8", "#ffe26a", "#bba2ff", "#ffac6b", "#a0e8c3", "#ffffff"];
+    for (let i = 0; i < 240; i++) {
+      ctx.fillStyle = flowers[Math.floor(Math.random() * flowers.length)];
+      const x = Math.random() * size, y = Math.random() * size;
+      ctx.beginPath(); ctx.arc(x, y, 1.2 + Math.random() * 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  }
+
+  _makePaintedPondTexture() {
+    const size = 512;
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size * 0.5);
+    grad.addColorStop(0, "#6fc5e7");
+    grad.addColorStop(1, "#2c5f7d");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    // ripple highlights
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < 24; i++) {
+      ctx.beginPath();
+      const x = Math.random() * size, y = Math.random() * size;
+      const r = 16 + Math.random() * 48;
+      ctx.ellipse(x, y, r, r * 0.32, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
   }
 
   _scatterScenery() {
@@ -246,6 +366,22 @@ export class World {
     this.scene.fog.color.lerpColors(this.fogColors[cur], this.fogColors[next], t);
     this.ambient.color.lerpColors(this.ambientColors[cur], this.ambientColors[next], t);
     this.sun.color.lerpColors(this.sunColors[cur], this.sunColors[next], t);
+    // The dome zenith follows the sky background; the horizon picks up the
+    // (lighter) fog tint so there's atmospheric perspective. Vertex colors
+    // are interpolated per-vertex by `t` already baked into the buffer.
+    this.skyTop.lerpColors(this.skyColors[cur], this.skyColors[next], t);
+    this.skyBottom.lerpColors(this.fogColors[cur], this.fogColors[next], t);
+    if (this.skyDome && this._skyT) {
+      const col = this.skyDome.geometry.attributes.color;
+      for (let i = 0; i < col.count; i++) {
+        const tv = this._skyT[i];
+        const r = this.skyBottom.r + (this.skyTop.r - this.skyBottom.r) * tv;
+        const g = this.skyBottom.g + (this.skyTop.g - this.skyBottom.g) * tv;
+        const b = this.skyBottom.b + (this.skyTop.b - this.skyBottom.b) * tv;
+        col.setXYZ(i, r, g, b);
+      }
+      col.needsUpdate = true;
+    }
     // Sun position rides an arc across the cycle.
     const fullT = (this.timeIdx + t) / TIMES.length; // 0..1 over full cycle
     const ang = fullT * Math.PI * 2;
@@ -258,46 +394,65 @@ export class World {
     this.starMat.opacity += (targetOpacity - this.starMat.opacity) * 0.02;
   }
 
-  // ---- model preloading --------------------------------------------------
+  // ---- asset preloading --------------------------------------------------
 
-  // Preload every character's GLB (if present). Missing files just leave the
-  // cache empty for that id — the procedural mesh is used as the fallback.
-  // Returns a Promise that resolves once all loads have settled.
+  // Kick off GLB + portrait-texture loads for every character. Both are
+  // best-effort — missing files leave the corresponding cache empty and
+  // _buildActorMesh falls back through GLB → sprite → procedural in that
+  // priority. Returns a Promise that resolves once all loads have settled.
   preloadModels(charDefs) {
-    const promises = charDefs.map((c) => {
-      if (!c.model) return Promise.resolve();
-      return new Promise((resolve) => {
-        this.gltfLoader.load(
-          c.model,
-          (gltf) => {
-            const root = gltf.scene;
-            // Ensure shadows + reasonable defaults on every mesh in the GLB.
-            root.traverse((n) => {
-              if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; }
-            });
-            // Auto-fit: scale the GLB so its tallest dimension is ~1.5 world units
-            // (about the height of the procedural meshes), and recenter on the
-            // ground plane.
-            const box = new THREE.Box3().setFromObject(root);
-            const size = new THREE.Vector3(); box.getSize(size);
-            const height = Math.max(size.y, 0.001);
-            const targetHeight = c.modelTargetHeight || 1.4;
-            const s = targetHeight / height;
-            root.scale.setScalar(s);
-            const box2 = new THREE.Box3().setFromObject(root);
-            const center = new THREE.Vector3(); box2.getCenter(center);
-            root.position.x -= center.x;
-            root.position.z -= center.z;
-            root.position.y -= box2.min.y; // feet on y=0
-            this.modelCache[c.id] = root;
-            resolve();
-          },
-          undefined,
-          (_err) => { /* swallow — fallback to procedural */ resolve(); }
-        );
-      });
-    });
+    const promises = [];
+    for (const c of charDefs) {
+      if (c.model) promises.push(this._loadGLB(c));
+      if (c.portrait) promises.push(this._loadSpriteTexture(c));
+    }
     return Promise.all(promises);
+  }
+
+  _loadGLB(c) {
+    return new Promise((resolve) => {
+      this.gltfLoader.load(
+        c.model,
+        (gltf) => {
+          const root = gltf.scene;
+          root.traverse((n) => {
+            if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; }
+          });
+          const box = new THREE.Box3().setFromObject(root);
+          const size = new THREE.Vector3(); box.getSize(size);
+          const height = Math.max(size.y, 0.001);
+          const targetHeight = c.modelTargetHeight || 1.4;
+          root.scale.setScalar(targetHeight / height);
+          const box2 = new THREE.Box3().setFromObject(root);
+          const center = new THREE.Vector3(); box2.getCenter(center);
+          root.position.x -= center.x;
+          root.position.z -= center.z;
+          root.position.y -= box2.min.y;
+          this.modelCache[c.id] = root;
+          resolve();
+        },
+        undefined,
+        () => resolve()
+      );
+    });
+  }
+
+  _loadSpriteTexture(c) {
+    return new Promise((resolve) => {
+      this.textureLoader.load(
+        c.portrait,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.anisotropy = 4;
+          this.spriteCache[c.id] = tex;
+          resolve();
+        },
+        undefined,
+        () => resolve()
+      );
+    });
   }
 
   // ---- actors -------------------------------------------------------------
@@ -358,8 +513,10 @@ export class World {
     const mesh = this._buildActorMesh(charDef);
     mesh.position.copy(position);
     mesh.position.y = charDef.flying ? 6 : (charDef.floating ? 1.5 : 0.6);
-    mesh.userData = { kind: "actor", charId: charDef.id };
-    mesh.traverse((c) => { if (c.isMesh) c.userData.actorRef = mesh; });
+    // Merge userData so we preserve flags set by the mesh builder (notably
+    // isSpriteActor) — overwriting would lose them.
+    Object.assign(mesh.userData, { kind: "actor", charId: charDef.id });
+    mesh.traverse((c) => { if (c.isMesh || c.isSprite) c.userData.actorRef = mesh; });
     this.scene.add(mesh);
     const actor = {
       id: charDef.id,
@@ -384,27 +541,68 @@ export class World {
     this.scene.remove(actor.mesh);
     const m = this._buildActorMesh(actor.def);
     m.position.copy(oldPos);
-    m.userData = { kind: "actor", charId: actor.id };
-    m.traverse((c) => { if (c.isMesh) c.userData.actorRef = m; });
+    Object.assign(m.userData, { kind: "actor", charId: actor.id });
+    m.traverse((c) => { if (c.isMesh || c.isSprite) c.userData.actorRef = m; });
     this.scene.add(m);
     actor.mesh = m;
   }
 
-  // Prefer the GLB if it was successfully preloaded; otherwise fall back to the
-  // character's procedural buildBody(). The GLB is cloned so each spawn has its
-  // own scene-graph instance (palette tweaks on Ember's rebirth, etc.).
+  // Priority: GLB (if a Tripo model is in /docs/models/) → painted sprite
+  // billboard (if the portrait texture loaded) → procedural buildBody().
+  // The sprite is always good if the texture exists; GLB only "wins" when it's
+  // explicitly present because we know that's the highest-fidelity result.
   _buildActorMesh(charDef) {
-    const cached = this.modelCache[charDef.id];
-    if (cached) {
-      const cloned = cached.clone(true);
-      // Clone materials so per-instance tints (e.g. Ember's color cycle) don't
-      // leak across actors. Standard three.js clone() shares materials by ref.
+    const glb = this.modelCache[charDef.id];
+    if (glb) {
+      const cloned = glb.clone(true);
       cloned.traverse((n) => {
         if (n.isMesh && n.material) n.material = n.material.clone();
       });
       return cloned;
     }
+    const tex = this.spriteCache[charDef.id];
+    if (tex) return this._buildSpriteActor(charDef, tex);
     return charDef.buildBody();
+  }
+
+  // Painted-cutout actor: a camera-facing Sprite using the character's
+  // portrait, with a soft elliptical shadow blob beneath for ground walkers.
+  // Sprite center is at the bottom-middle so positioning is in "feet" space —
+  // the rest of the engine already targets y in those units.
+  _buildSpriteActor(charDef, texture) {
+    const g = new THREE.Group();
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.center.set(0.5, 0); // anchor at bottom-center (feet)
+    // Per-character footprint. The portrait is 1024x1024 — a 2-unit base
+    // height fits the procedural-mesh footprint nicely. Override per character
+    // via spriteScale.
+    const scale = charDef.spriteScale || 2.0;
+    sprite.scale.set(scale, scale, scale);
+    g.add(sprite);
+    // Shadow blob for ground walkers only (flyers/floaters don't touch ground).
+    if (!charDef.flying && !charDef.floating) {
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(scale * 0.32, 24),
+        new THREE.MeshBasicMaterial({
+          color: 0x000000,
+          transparent: true,
+          opacity: 0.35,
+          depthWrite: false,
+        })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = 0.02;
+      shadow.scale.set(1, 0.65, 1);
+      g.add(shadow);
+    }
+    g.userData.isSpriteActor = true;
+    return g;
   }
 
   findNearestActor(toVec3) {
@@ -466,17 +664,23 @@ export class World {
     m.position.x += Math.cos(actor.heading) * speed * dt / 1000;
     m.position.z += Math.sin(actor.heading) * speed * dt / 1000;
 
-    // Y position by category.
+    // Y position by category. Sprite actors anchor at their feet (sprite
+    // center is at the bottom), so the y here is "feet height"; for procedural
+    // / GLB meshes it's the center of the mesh — slightly different baseline,
+    // accounted for via spriteBaseOffset.
+    const isSprite = m.userData && m.userData.isSpriteActor;
     if (def.flying) {
-      m.position.y = 6 + Math.sin(performance.now() * 0.0008 + actor.born * 0.0001) * 0.6;
+      m.position.y = (isSprite ? 5 : 6) + Math.sin(performance.now() * 0.0008 + actor.born * 0.0001) * 0.6;
     } else if (def.floating) {
-      m.position.y = 1.5 + Math.sin(performance.now() * 0.0014 + actor.born * 0.0001) * 0.2;
+      m.position.y = (isSprite ? 0.8 : 1.5) + Math.sin(performance.now() * 0.0014 + actor.born * 0.0001) * 0.2;
     } else {
-      m.position.y = 0.6 + Math.abs(Math.sin(performance.now() * 0.005 + actor.born * 0.0002)) * 0.08;
+      m.position.y = (isSprite ? 0.0 : 0.6) + Math.abs(Math.sin(performance.now() * 0.005 + actor.born * 0.0002)) * 0.08;
     }
 
-    // Face the heading.
-    m.rotation.y = -actor.heading + Math.PI / 2;
+    // Sprites always face the camera; only procedural/GLB meshes need a
+    // heading rotation. Setting rotation.y on a Sprite-only group has no
+    // visual effect anyway, so we just skip the work.
+    if (!isSprite) m.rotation.y = -actor.heading + Math.PI / 2;
 
     // Joy ticks up; faster in preferred time.
     const tname = this.timeName();
