@@ -123,11 +123,21 @@ html, body {
 .slot.active        { background: rgba(244,201,93,0.18); border-color: var(--gold); box-shadow: 0 0 0 3px rgba(244,201,93,0.15); }
 
 .slot-swatch {
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   box-shadow: inset 0 -6px 0 rgba(0,0,0,0.15), 0 1px 0 rgba(255,255,255,0.2);
 }
+.slot-portrait {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  background: #1a1530;
+}
+.slot.locked .slot-portrait { filter: grayscale(1) brightness(0.5); }
 .slot-name {
   margin-top: 4px;
   font-size: 10px;
@@ -188,8 +198,19 @@ html, body {
 }
 #inspector .close:hover { opacity: 1; }
 
-#inspector h2 { margin: 0 0 2px; font-size: 22px; letter-spacing: 0.01em; }
-#inspector .role { margin: 0 0 10px; opacity: 0.7; font-style: italic; font-size: 13px; }
+#inspector .portrait {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(244,201,93,0.55);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.15);
+  background: #1a1530;
+}
+#inspector h2 { margin: 0 0 2px; font-size: 22px; letter-spacing: 0.01em; text-align: center; }
+#inspector .role { margin: 0 0 10px; opacity: 0.7; font-style: italic; font-size: 13px; text-align: center; }
 #inspector .story { margin: 0 0 14px; font-size: 14px; line-height: 1.45; opacity: 0.9; }
 
 #inspector .stats {
@@ -297,7 +318,6 @@ html, body {
   position: absolute;
   inset: 0;
   z-index: 30;
-  background: radial-gradient(ellipse at center, rgba(6,8,30,0.55), rgba(6,8,30,0.85));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -305,8 +325,33 @@ html, body {
   text-align: center;
   padding: 40px;
   transition: opacity 0.6s var(--ease-soft);
+  overflow: hidden;
 }
 #welcome.hide { opacity: 0; pointer-events: none; }
+
+/* Splash background — set as a style attribute in JS so we can swap the URL once
+   the title image is generated. Falls back to the radial gradient otherwise. */
+.welcome-art {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(6,8,30,0.55), rgba(6,8,30,0.95));
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+.welcome-art::after {
+  /* Vignette over the splash so the text stays readable on any image. */
+  content: "";
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(6,8,30,0.20), rgba(6,8,30,0.85) 75%);
+}
+.welcome-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 #welcome h1 {
   font-size: clamp(28px, 5vw, 48px);
   margin: 0 0 16px;
@@ -336,9 +381,67 @@ html, body {
 #welcome button:hover  { transform: scale(1.04); }
 #welcome button:active { transform: scale(0.98); }
 
+/* --- Hatch reveal --------------------------------------------------------- */
+
+#reveal {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: radial-gradient(ellipse at center, rgba(6,8,30,0.55), rgba(6,8,30,0.92));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  animation: reveal-fade 0.4s var(--ease-soft);
+}
+#reveal[hidden] { display: none; }
+@keyframes reveal-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.reveal-card {
+  max-width: 460px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  animation: reveal-pop 0.7s var(--ease-soft);
+}
+@keyframes reveal-pop {
+  0%   { transform: translateY(20px) scale(0.92); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.reveal-card .portrait {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(244,201,93,0.6);
+  box-shadow: 0 12px 38px rgba(0,0,0,0.55), 0 0 0 8px rgba(244,201,93,0.06);
+  background: #1a1530;
+}
+.reveal-card h2 { margin: 4px 0 0; font-size: 36px; letter-spacing: 0.01em; }
+.reveal-card .role { margin: 0; opacity: 0.75; font-style: italic; font-size: 15px; }
+.reveal-card .story { margin: 0; font-size: 15px; line-height: 1.55; opacity: 0.92; max-width: 400px; }
+.reveal-card button {
+  margin-top: 6px;
+  padding: 10px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(244,201,93,0.6);
+  background: linear-gradient(180deg, rgba(244,201,93,0.30), rgba(244,201,93,0.08));
+  color: var(--paper);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.reveal-card button:hover { transform: scale(1.04); }
+.reveal-card button:active { transform: scale(0.98); }
+
 /* --- Phones --------------------------------------------------------------- */
 
 @media (max-width: 600px) {
+  .reveal-card .portrait { width: 160px; height: 160px; }
+  .reveal-card h2 { font-size: 28px; }
   #inspector { right: 8px; left: 8px; width: auto; top: 56px; }
   .hud-pill  { font-size: 12px; padding: 6px 10px; }
   .slot      { width: 54px; min-width: 54px; height: 54px; padding: 4px; }

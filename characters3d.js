@@ -74,6 +74,7 @@ function eggBase(colorHex, decorate = (g) => {}) {
 
 const aurora = {
   id: "aurora",
+  portrait: "docs/portraits/aurora.png",
   name: "Aurora",
   role: "Sky-Whale of the Quiet Vault",
   story: "Aurora hatched from a piece of the night that fell. When she sings, the stars remember the shapes she dreams.",
@@ -134,6 +135,7 @@ const aurora = {
 
 const magma = {
   id: "magma",
+  portrait: "docs/portraits/magma.png",
   name: "Magma",
   role: "Pup of the First Forge",
   story: "Magma was born inside a heart-shaped coal at the bottom of a volcano. He runs because standing still makes flowers wilt.",
@@ -207,6 +209,7 @@ const magma = {
 
 const glimmer = {
   id: "glimmer",
+  portrait: "docs/portraits/glimmer.png",
   name: "Glimmer",
   role: "Fox of the Prism Caves",
   story: "Glimmer was the last facet of a crystal that learned to want. She turns to face every light and asks it questions.",
@@ -271,6 +274,7 @@ const glimmer = {
 
 const mossback = {
   id: "mossback",
+  portrait: "docs/portraits/mossback.png",
   name: "Mossback",
   role: "Turtle of the Slow Forest",
   story: "Mossback has been hatching for a thousand years. Time is just the rate at which moss grows on something patient.",
@@ -332,6 +336,7 @@ const mossback = {
 
 const whisper = {
   id: "whisper",
+  portrait: "docs/portraits/whisper.png",
   name: "Whisper",
   role: "Cat of the Unlit Hour",
   story: "Whisper is not one creature but a habit the dark fell into. She visits the same places, never the same shadow twice.",
@@ -403,6 +408,7 @@ const whisper = {
 
 const pip = {
   id: "pip",
+  portrait: "docs/portraits/pip.png",
   name: "Pip",
   role: "Sparrow with a Pocket Storm",
   story: "Pip was hatched in a thundercloud and dropped on a Tuesday. The cloud followed him home. It wasn't done telling him things.",
@@ -470,6 +476,7 @@ const pip = {
 
 const bubble = {
   id: "bubble",
+  portrait: "docs/portraits/bubble.png",
   name: "Bubble",
   role: "Jelly of the Drifting Trench",
   story: "Bubble keeps the smallest moments somebody almost forgot. Pop one and you'll catch a glimpse before it returns to the sea.",
@@ -535,6 +542,7 @@ const bubble = {
 
 const ember = {
   id: "ember",
+  portrait: "docs/portraits/ember.png",
   name: "Ember",
   role: "Phoenix Still Learning to Burn",
   story: "Ember's first life lasted four minutes. He spent it bowing to a beetle. He has been bowing to things ever since, between flames.",
@@ -618,6 +626,7 @@ function describeColor(hex) {
 
 const solis = {
   id: "solis",
+  portrait: "docs/portraits/solis.png",
   name: "Solis",
   role: "The First Egg, Finally Listening",
   story: "Solis was the original egg, asleep beneath every other. When the eight are happy, she finally remembers she was waiting for them.",

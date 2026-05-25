@@ -588,6 +588,13 @@ export class World {
   _refreshInspector() {
     if (!this.focus) return;
     const a = this.focus;
+    const portraitEl = document.getElementById("insp-portrait");
+    if (a.def.portrait) {
+      portraitEl.src = a.def.portrait;
+      portraitEl.hidden = false;
+    } else {
+      portraitEl.hidden = true;
+    }
     document.getElementById("insp-name").textContent = a.name;
     document.getElementById("insp-role").textContent = a.def.role;
     document.getElementById("insp-story").textContent = a.def.story;

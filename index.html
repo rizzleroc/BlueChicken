@@ -34,6 +34,7 @@
       <!-- Inspector panel. -->
       <aside id="inspector" hidden aria-live="polite">
         <button class="close" id="inspector-close" aria-label="Close">×</button>
+        <img id="insp-portrait" class="portrait" alt="" hidden />
         <h2 id="insp-name"></h2>
         <p class="role" id="insp-role"></p>
         <p class="story" id="insp-story"></p>
@@ -56,11 +57,25 @@
       </div>
 
       <section id="welcome" role="dialog" aria-modal="false">
-        <h1>The Hatchling World</h1>
-        <p>A small valley with nine eggs waiting. Tap each six times to hatch it — every soul inside is different, and the world remembers each one.</p>
-        <p>Wolves wander in. UFOs drop by. Winter rolls through and igloos rise from the snow. The world doesn't stop happening to you.</p>
-        <p class="hint">Drag to look around · Scroll to zoom · Tap an egg six times to hatch</p>
-        <button id="welcome-go">Begin</button>
+        <div class="welcome-art" id="welcome-art"></div>
+        <div class="welcome-inner">
+          <h1>The Hatchling World</h1>
+          <p>A small valley with nine eggs waiting. Tap each six times to hatch it — every soul inside is different, and the world remembers each one.</p>
+          <p>Wolves wander in. UFOs drop by. Winter rolls through and igloos rise from the snow. The world doesn't stop happening to you.</p>
+          <p class="hint">Drag to look around · Scroll to zoom · Tap an egg six times to hatch</p>
+          <button id="welcome-go">Begin</button>
+        </div>
+      </section>
+
+      <!-- Hatch reveal — full-screen celebration when a new character hatches. -->
+      <section id="reveal" hidden aria-live="polite">
+        <div class="reveal-card">
+          <img id="reveal-portrait" class="portrait" alt="" />
+          <h2 id="reveal-name"></h2>
+          <p class="role" id="reveal-role"></p>
+          <p class="story" id="reveal-story"></p>
+          <button id="reveal-go">Continue</button>
+        </div>
       </section>
     </main>
 

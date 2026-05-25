@@ -4,6 +4,19 @@
 
 A small, dependency-free 3D web app. Nine eggs, nine very different souls inside, and a living valley where wolves, UFOs, polar bears, winters, and meteor showers all visit on their own schedule.
 
+## The hatchlings
+
+|                                                |                                              |                                              |
+|------------------------------------------------|----------------------------------------------|----------------------------------------------|
+| <img src="docs/portraits/aurora.png" width="140">   | <img src="docs/portraits/magma.png" width="140">   | <img src="docs/portraits/glimmer.png" width="140">  |
+| **Aurora** — Sky-Whale                         | **Magma** — Lava Pup                         | **Glimmer** — Crystal Fox                    |
+| <img src="docs/portraits/mossback.png" width="140"> | <img src="docs/portraits/whisper.png" width="140"> | <img src="docs/portraits/pip.png" width="140">       |
+| **Mossback** — Garden Turtle                   | **Whisper** — Shadow Cat                     | **Pip** — Storm Sparrow                      |
+| <img src="docs/portraits/bubble.png" width="140">   | <img src="docs/portraits/ember.png" width="140">   | <img src="docs/portraits/solis.png" width="140">    |
+| **Bubble** — Deep Jelly                        | **Ember** — Phoenix Chick                    | **Solis** — The First Egg                    |
+
+All character portraits and the title splash (`docs/title.png`) were generated via the whip MCP connector (ChatGPT image-gen) and matched to a single painterly storybook style.
+
 ## Run
 
 Open `index.html` in any modern browser. There is no build step and no server. Three.js loads from a CDN via an `<script type="importmap">`; if you're offline, swap the importmap URLs for a local copy of the same files.

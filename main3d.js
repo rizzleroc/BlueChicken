@@ -69,11 +69,27 @@ function buildRoster() {
     slot.className = "slot locked";
     slot.dataset.id = c.id;
     slot.title = c.name + " — not yet hatched";
-    // Color swatch placeholder until they hatch; replaced with mini render on hatch.
-    const swatch = document.createElement("div");
-    swatch.className = "slot-swatch";
-    swatch.style.background = "#" + c.palette.body.toString(16).padStart(6, "0");
-    slot.appendChild(swatch);
+    // Use the painterly portrait when available; falls back to a color swatch if
+    // the asset is missing or fails to load (e.g. while a new run is being generated).
+    if (c.portrait) {
+      const img = document.createElement("img");
+      img.className = "slot-portrait";
+      img.src = c.portrait;
+      img.alt = c.name;
+      img.onerror = () => {
+        img.remove();
+        const swatch = document.createElement("div");
+        swatch.className = "slot-swatch";
+        swatch.style.background = "#" + c.palette.body.toString(16).padStart(6, "0");
+        slot.insertBefore(swatch, slot.firstChild);
+      };
+      slot.appendChild(img);
+    } else {
+      const swatch = document.createElement("div");
+      swatch.className = "slot-swatch";
+      swatch.style.background = "#" + c.palette.body.toString(16).padStart(6, "0");
+      slot.appendChild(swatch);
+    }
     const nm = document.createElement("div");
     nm.className = "slot-name";
     nm.textContent = c.name;
@@ -183,6 +199,7 @@ canvas.addEventListener("pointerup", (ev) => {
     const newActor = world.tapEgg(charId);
     if (newActor) {
       refreshRosterFor(newActor);
+      showReveal(newActor.def);
       checkSolisGate();
     }
   } else if (drag.kind === "actor" && !drag.moved && wasShort) {
@@ -221,11 +238,63 @@ function revealSolis() {
 
 document.getElementById("inspector-close").onclick = () => world.closeInspector();
 
-// ---- Welcome dismiss ------------------------------------------------------
+// ---- Welcome dismiss + splash --------------------------------------------
 
 const welcome = document.getElementById("welcome");
+const welcomeArt = document.getElementById("welcome-art");
+
+// Try to use the generated title image as the splash backdrop. Probe by loading
+// it; if it fails we keep the existing radial-gradient fallback baked into CSS.
+(function trySplash() {
+  const probe = new Image();
+  probe.onload = () => { welcomeArt.style.backgroundImage = `url('${probe.src}')`; };
+  probe.src = "docs/title.png";
+})();
+
 const dismiss = () => welcome.classList.add("hide");
 document.getElementById("welcome-go").onclick = dismiss;
+
+// ---- Hatch reveal modal --------------------------------------------------
+
+const reveal = document.getElementById("reveal");
+const revealPortrait = document.getElementById("reveal-portrait");
+const revealName = document.getElementById("reveal-name");
+const revealRole = document.getElementById("reveal-role");
+const revealStory = document.getElementById("reveal-story");
+const revealGo = document.getElementById("reveal-go");
+
+let revealQueue = [];
+let revealActive = false;
+
+function showReveal(charDef) {
+  revealQueue.push(charDef);
+  if (!revealActive) playNextReveal();
+}
+function playNextReveal() {
+  const charDef = revealQueue.shift();
+  if (!charDef) { revealActive = false; return; }
+  revealActive = true;
+  // Restart the entry animation each time.
+  reveal.hidden = false;
+  reveal.style.animation = "none";
+  void reveal.offsetWidth;
+  reveal.style.animation = "";
+  // If no portrait is available, swap in a colored disc so the modal still works.
+  if (charDef.portrait) {
+    revealPortrait.src = charDef.portrait;
+    revealPortrait.style.background = "#1a1530";
+  } else {
+    revealPortrait.removeAttribute("src");
+    revealPortrait.style.background = "#" + charDef.palette.body.toString(16).padStart(6, "0");
+  }
+  revealName.textContent = charDef.name;
+  revealRole.textContent = charDef.role;
+  revealStory.textContent = charDef.story;
+}
+revealGo.onclick = () => {
+  reveal.hidden = true;
+  playNextReveal();
+};
 
 // Hide the controls hint after 9 seconds.
 setTimeout(() => document.getElementById("controls-hint").classList.add("fade"), 9000);
