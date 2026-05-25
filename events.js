@@ -100,6 +100,7 @@ const ufoVisit = {
     const target = new THREE.Vector3(rand(-12, 12), 14, rand(-12, 12));
     ufo.position.set(target.x + 30, 20, target.z + 30);
     world.scene.add(ufo);
+    if (world.audio) world.audio.ufoSwoop();
     world.toast("Something silver moves above the trees…");
 
     // Approach
@@ -205,6 +206,7 @@ const firstContact = {
     const drop = new THREE.Vector3(rand(-8, 8), 14, rand(-8, 8));
     ufo.position.set(drop.x + 25, 22, drop.z - 25);
     world.scene.add(ufo);
+    if (world.audio) world.audio.ufoSwoop();
     world.toast("They're back. And they brought someone.");
     const start = ufo.position.clone();
     await new Promise((resolve) => {
@@ -264,6 +266,7 @@ const firstContact = {
     world.toast("First contact.");
     const target = world.findNearestActor(alien.position);
     if (target) {
+      if (world.audio) world.audio.firstContact();
       await new Promise((res) => {
         const from = alien.position.clone();
         const to = target.mesh.position.clone();
@@ -346,6 +349,7 @@ const wolfVisit = {
     wolf.position.copy(from);
     wolf.lookAt(to.x, wolf.position.y, to.z);
     world.scene.add(wolf);
+    if (world.audio) world.audio.wolf();
     world.toast("Something moves at the edge of the trees.");
     await new Promise((res) => {
       const tStart = performance.now();
@@ -441,6 +445,7 @@ const winterSequence = {
   weight: 3,
   async run(world) {
     world.toast("A chill rolls down from the mountains.");
+    if (world.audio) world.audio.freeze();
     world.setWeather("freezing");
     // Desaturate fog/scene color and cool the lights.
     const origFog = world.scene.fog.color.getHex();
@@ -455,6 +460,7 @@ const winterSequence = {
     // Snowfall: a particle system attached to the camera area.
     const snow = makeSnow(world, 1200);
     world.scene.add(snow);
+    if (world.audio) world.audio.snowfall();
     world.setWeather("snowing");
 
     // After a while, build a few igloos.
@@ -467,6 +473,7 @@ const winterSequence = {
       igloo.scale.setScalar(0.001);
       world.scene.add(igloo);
       igloos.push(igloo);
+      if (world.audio) world.audio.igloo();
       // animate scale up
       const startTime = performance.now();
       (function grow() {
@@ -487,6 +494,7 @@ const winterSequence = {
     bear.position.copy(from);
     bear.lookAt(to.x, bear.position.y, to.z);
     world.scene.add(bear);
+    if (world.audio) world.audio.polarBear();
     world.toast("A polar bear lumbers across the valley.");
     await new Promise((res) => {
       const tStart = performance.now();
@@ -504,6 +512,7 @@ const winterSequence = {
 
     // Hold the winter scene for a bit longer.
     await wait(6000);
+    if (world.audio) world.audio.thaw();
     world.toast("The thaw begins.");
     // Fade snow out
     snow.userData.fading = true;
@@ -581,6 +590,7 @@ const auroraBorealis = {
   prefersNight: true,
   async run(world) {
     if (world.timeName() !== "night") return;
+    if (world.audio) world.audio.auroraBorealis();
     world.toast("Ribbons of light pour across the sky.");
     const ribbons = new THREE.Group();
     const colors = [0x6effc4, 0x96b8ff, 0xff96d2];
@@ -633,7 +643,10 @@ const meteorShower = {
     world.toast("Streaks of fire cross the sky — make a wish.");
     const N = 12;
     for (let i = 0; i < N; i++) {
-      setTimeout(() => streakOne(world), i * 400 + rand(0, 200));
+      setTimeout(() => {
+        streakOne(world);
+        if (world.audio) world.audio.meteor();
+      }, i * 400 + rand(0, 200));
     }
     await wait(N * 400 + 3000);
   },
@@ -667,6 +680,7 @@ const eclipse = {
   weight: 1,
   async run(world) {
     if (world.timeName() !== "day") return;
+    if (world.audio) world.audio.eclipse();
     world.toast("The sun goes dark. Everything waits.");
     const origAmb = world.ambient.intensity;
     const origSun = world.sun.intensity;
@@ -683,6 +697,7 @@ const eclipse = {
 
 const characterSpecials = {
   constellation(world, args) {
+    if (world.audio) world.audio.constellation();
     // Draw a constellation high in the sky (visible best at night).
     const N = 6 + Math.floor(Math.random() * 3);
     const cx = rand(-15, 15);
@@ -715,6 +730,7 @@ const characterSpecials = {
   },
 
   rainbow(world, args) {
+    if (world.audio) world.audio.rainbow();
     const colors = [0xff5959, 0xffa844, 0xffe35c, 0x7be07b, 0x5cc3ff, 0x7e7bff, 0xc87bff];
     const arcGroup = new THREE.Group();
     for (let i = 0; i < colors.length; i++) {
@@ -742,6 +758,7 @@ const characterSpecials = {
   },
 
   pipRain(world, args) {
+    if (world.audio) world.audio.pipRain();
     // Drop water particles for ~2s, then grow a flower at the center.
     const drops = new THREE.Group();
     const dropMat = new THREE.MeshBasicMaterial({ color: 0x7fb6ff, transparent: true, opacity: 0.8 });
@@ -770,6 +787,7 @@ const characterSpecials = {
   },
 
   memoryBubble(world, args) {
+    if (world.audio) world.audio.memoryBubble();
     const bub = new THREE.Mesh(
       new THREE.SphereGeometry(0.35, 18, 14),
       new THREE.MeshStandardMaterial({
@@ -793,6 +811,7 @@ const characterSpecials = {
   },
 
   rebirth(world, args) {
+    if (world.audio) world.audio.rebirth();
     const actor = args.actor;
     // Burst of flame around the actor; rebuild the body with new palette.
     const flameGroup = new THREE.Group();

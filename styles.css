@@ -78,6 +78,19 @@ html, body {
 
 #event-pill { background: rgba(244, 201, 93, 0.18); border-color: rgba(244, 201, 93, 0.35); }
 
+/* Audio toggle is a pill that behaves like a button. */
+.hud-button {
+  pointer-events: auto;
+  cursor: pointer;
+  font: inherit;
+  color: var(--paper);
+  padding: 6px 10px;
+  letter-spacing: 0;
+  transition: background 0.2s var(--ease-soft), transform 0.1s var(--ease-soft);
+}
+.hud-button:hover  { background: var(--hud-bg-hi); }
+.hud-button:active { transform: scale(0.95); }
+
 /* --- Roster ----------------------------------------------------------------- */
 
 #roster {
@@ -357,6 +370,38 @@ html, body {
   margin: 0 0 16px;
   letter-spacing: 0.01em;
 }
+
+/* Big serif title sitting over the splash, with a gold-into-cream gradient
+   fill plus a wide soft glow so it reads on any background. Staggered entry. */
+#welcome h1.title {
+  font-size: clamp(40px, 8vw, 96px);
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  margin: 0 0 12px;
+  background: linear-gradient(180deg, #fff8d8 0%, #f0c558 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  text-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 80px rgba(244,201,93,0.35);
+  animation: title-in 1.6s var(--ease-soft) both;
+}
+@keyframes title-in {
+  from { transform: translateY(14px) scale(0.96); opacity: 0; filter: blur(6px); }
+  to   { transform: translateY(0) scale(1);       opacity: 1; filter: blur(0); }
+}
+#welcome p.tagline {
+  font-style: italic;
+  font-size: clamp(15px, 2vw, 19px);
+  letter-spacing: 0.04em;
+  margin: 0 0 22px;
+  animation: tagline-in 1.6s 0.3s var(--ease-soft) both;
+}
+@keyframes tagline-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 0.88; }
+}
+
 #welcome p {
   max-width: 480px;
   font-size: 16px;
@@ -418,6 +463,34 @@ html, body {
   border: 3px solid rgba(244,201,93,0.6);
   box-shadow: 0 12px 38px rgba(0,0,0,0.55), 0 0 0 8px rgba(244,201,93,0.06);
   background: #1a1530;
+  /* Slow Ken-Burns: image inside the circular frame breathes — scales up and
+     drifts slowly while the reveal is open. */
+  animation: reveal-kenburns 14s linear infinite;
+  transform-origin: 50% 45%;
+}
+@keyframes reveal-kenburns {
+  0%   { transform: scale(1.00) translate(0, 0); }
+  50%  { transform: scale(1.14) translate(-2%, -3%); }
+  100% { transform: scale(1.00) translate(0, 0); }
+}
+/* Slow rotating gold ring behind the portrait — implemented as an inner
+   ::before halo on the card so we don't need an extra DOM element. */
+.reveal-card { position: relative; }
+.reveal-card::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  width: 248px;
+  height: 248px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(244,201,93,0.0), rgba(244,201,93,0.35), rgba(244,201,93,0.0) 70%);
+  filter: blur(8px);
+  z-index: -1;
+  animation: reveal-ring 9s linear infinite;
+}
+@keyframes reveal-ring {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 .reveal-card h2 { margin: 4px 0 0; font-size: 36px; letter-spacing: 0.01em; }
 .reveal-card .role { margin: 0; opacity: 0.75; font-style: italic; font-size: 15px; }

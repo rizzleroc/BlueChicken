@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CHARACTERS } from "./characters3d.js";
 import { World } from "./world3d.js";
+import { audio } from "./audio.js";
 
 // ---- Renderer / Scene / Camera --------------------------------------------
 
@@ -43,6 +44,7 @@ window.addEventListener("resize", () => {
 // ---- World ----------------------------------------------------------------
 
 const world = new World({ renderer, scene, camera });
+world.audio = audio;
 window.__world = world;
 
 // Try to preload Tripo-generated GLB models for every character. Missing files
@@ -204,17 +206,22 @@ canvas.addEventListener("pointerup", (ev) => {
     const charId = drag.obj.userData.charId;
     const newActor = world.tapEgg(charId);
     if (newActor) {
+      audio.hatch();
       refreshRosterFor(newActor);
       showReveal(newActor.def);
       checkSolisGate();
+    } else {
+      audio.tap();
     }
   } else if (drag.kind === "actor" && !drag.moved && wasShort) {
     const actor = world.actors.find((a) => a.mesh === drag.obj);
     if (actor) {
+      audio.pet();
       world.petActor(actor);
       world.focusActor(actor);
     }
   } else if (drag.kind === "bubble" && !drag.moved) {
+    audio.pop();
     world.popBubble(drag.obj);
   }
   drag = null;
@@ -257,8 +264,25 @@ const welcomeArt = document.getElementById("welcome-art");
   probe.src = "docs/title.png";
 })();
 
-const dismiss = () => welcome.classList.add("hide");
+const dismiss = () => {
+  welcome.classList.add("hide");
+  // Welcome dismiss is the first user gesture — safe to bring up AudioContext now.
+  audio.init();
+};
 document.getElementById("welcome-go").onclick = dismiss;
+
+// Audio mute / unmute toggle in the HUD.
+const audioBtn = document.getElementById("audio-toggle");
+function updateAudioBtn() {
+  audioBtn.textContent = audio.muted ? "🔇" : "🔊";
+  audioBtn.title = audio.muted ? "Unmute" : "Mute";
+}
+audioBtn.onclick = () => {
+  audio.init();
+  audio.setMuted(!audio.muted);
+  updateAudioBtn();
+};
+updateAudioBtn();
 
 // ---- Hatch reveal modal --------------------------------------------------
 
@@ -280,6 +304,7 @@ function playNextReveal() {
   const charDef = revealQueue.shift();
   if (!charDef) { revealActive = false; return; }
   revealActive = true;
+  audio.reveal();
   // Restart the entry animation each time.
   reveal.hidden = false;
   reveal.style.animation = "none";

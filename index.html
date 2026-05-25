@@ -26,6 +26,7 @@
         <div class="hud-pill" id="weather-pill"><span class="hud-icon" id="weather-icon">·</span><span id="weather-label">Clear</span></div>
         <div class="hud-pill" id="event-pill"><span class="hud-icon">⚑</span><span id="event-label">All quiet</span></div>
         <div class="hud-pill" id="joy-pill"><span class="hud-icon">♡</span><span id="joy-label">0 / 9 hatched</span></div>
+        <button class="hud-pill hud-button" id="audio-toggle" type="button" aria-label="Toggle audio">🔇</button>
       </header>
 
       <!-- Roster strip along the bottom. -->
@@ -59,8 +60,9 @@
       <section id="welcome" role="dialog" aria-modal="false">
         <div class="welcome-art" id="welcome-art"></div>
         <div class="welcome-inner">
-          <h1>The Hatchling World</h1>
-          <p>A small valley with nine eggs waiting. Tap each six times to hatch it — every soul inside is different, and the world remembers each one.</p>
+          <h1 class="title">The Hatchling World</h1>
+          <p class="tagline">A small valley · nine eggs · nine very different souls</p>
+          <p>Tap each six times to hatch it. Every soul inside is different, and the world remembers each one.</p>
           <p>Wolves wander in. UFOs drop by. Winter rolls through and igloos rise from the snow. The world doesn't stop happening to you.</p>
           <p class="hint">Drag to look around · Scroll to zoom · Tap an egg six times to hatch</p>
           <button id="welcome-go">Begin</button>

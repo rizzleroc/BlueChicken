@@ -534,6 +534,7 @@ export class World {
   }
 
   dashActor(actor, durSec) {
+    if (this.audio) this.audio.dash();
     actor._dashUntil = performance.now() + durSec * 1000;
     actor.heading = rand(0, Math.PI * 2);
     // Spawn a row of footprints over the dash duration.
