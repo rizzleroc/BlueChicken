@@ -251,6 +251,82 @@ function revealSolis() {
 
 document.getElementById("inspector-close").onclick = () => world.closeInspector();
 
+// ---- Discovery codex ------------------------------------------------------
+
+const codex = document.getElementById("codex");
+const codexPortrait = document.getElementById("codex-portrait");
+const codexName = document.getElementById("codex-name");
+const codexRole = document.getElementById("codex-role");
+const codexStory = document.getElementById("codex-story");
+const codexDiscoveries = document.getElementById("codex-discoveries");
+const codexThumbs = document.getElementById("codex-thumbs");
+let codexActiveId = null;
+
+function openCodex() {
+  audio.init();
+  // Default to focused actor, else the most recently hatched, else first hatched.
+  const hatched = world.actors.slice();
+  const chosen =
+    (world.focus && hatched.find((a) => a.id === world.focus.id)) ||
+    hatched[hatched.length - 1] ||
+    null;
+  populateCodex(chosen ? chosen.def : CHARACTERS[0]);
+  codex.hidden = false;
+}
+function closeCodex() { codex.hidden = true; }
+document.getElementById("codex-toggle").onclick = openCodex;
+document.getElementById("codex-close").onclick = closeCodex;
+codex.addEventListener("click", (ev) => { if (ev.target === codex) closeCodex(); });
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !codex.hidden) closeCodex();
+});
+
+function populateCodex(charDef) {
+  codexActiveId = charDef.id;
+  codexPortrait.src = charDef.portrait || "";
+  codexPortrait.alt = charDef.name;
+  codexName.textContent = charDef.name;
+  codexRole.textContent = charDef.role;
+  codexStory.textContent = charDef.story;
+  // Discoveries — fall back to a placeholder line when none yet.
+  const lines = world.discoveries[charDef.id] || [];
+  codexDiscoveries.innerHTML = "";
+  if (lines.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = charDef.secret
+      ? "Awaiting awakening…"
+      : world.actors.find((a) => a.id === charDef.id)
+        ? "Nothing yet — wander with them and see what happens."
+        : "Not yet hatched.";
+    codexDiscoveries.appendChild(li);
+  } else {
+    // The discoveries array stores newest-first; the codex reads oldest-first
+    // like a journal, so reverse a shallow copy.
+    for (const line of lines.slice().reverse()) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      codexDiscoveries.appendChild(li);
+    }
+  }
+  // Bottom thumb row — every character in canonical order. Locked entries
+  // are sepia and unclickable until hatched.
+  codexThumbs.innerHTML = "";
+  const hatchedIds = new Set(world.actors.map((a) => a.id));
+  for (const c of CHARACTERS) {
+    if (c.secret && !solisRevealed) continue;
+    const img = document.createElement("img");
+    img.className = "codex-thumb";
+    img.src = c.portrait || "";
+    img.alt = c.name;
+    img.title = c.name;
+    if (c.id === codexActiveId) img.classList.add("active");
+    if (!hatchedIds.has(c.id)) img.classList.add("locked");
+    else img.onclick = () => populateCodex(c);
+    codexThumbs.appendChild(img);
+  }
+}
+
 // ---- Welcome dismiss + splash --------------------------------------------
 
 const welcome = document.getElementById("welcome");

@@ -481,6 +481,198 @@ html, body {
 #welcome button:hover  { transform: scale(1.04); }
 #welcome button:active { transform: scale(0.98); }
 
+/* --- Discovery codex ------------------------------------------------------ */
+
+#codex {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  background: radial-gradient(ellipse at center, rgba(20,15,8,0.7), rgba(6,5,2,0.92));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  animation: reveal-fade 0.4s var(--ease-soft);
+}
+#codex[hidden] { display: none; }
+
+#codex .close {
+  position: absolute;
+  top: 18px; right: 18px;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--paper-edge);
+  background: var(--hud-bg);
+  color: var(--ink-warm);
+  font-size: 22px; line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--parchment-shadow);
+}
+#codex .close:hover { background: var(--hud-bg-hi); }
+
+.book {
+  display: grid;
+  grid-template-columns: 1fr 6px 1fr;
+  gap: 0;
+  max-width: 1100px;
+  width: 100%;
+  height: 100%;
+  max-height: 760px;
+  position: relative;
+  filter: drop-shadow(0 30px 60px rgba(0,0,0,0.7));
+  animation: book-open 0.55s var(--ease-soft);
+}
+@keyframes book-open {
+  from { transform: scale(0.92) rotateX(8deg); opacity: 0; }
+  to   { transform: scale(1) rotateX(0);       opacity: 1; }
+}
+.book-page {
+  position: relative;
+  background: linear-gradient(180deg, #f6ebcf 0%, #ead7a5 100%);
+  border: 1px solid rgba(90, 60, 25, 0.4);
+  padding: 36px 40px;
+  overflow-y: auto;
+  color: var(--ink-warm);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -3px 8px rgba(80, 50, 20, 0.18);
+}
+.book-page.left  { border-radius: 14px 4px 4px 14px; text-align: center; }
+.book-page.right { border-radius: 4px 14px 14px 4px; }
+.book-spine {
+  background: linear-gradient(180deg, #6a4818 0%, #3e2a0e 50%, #6a4818 100%);
+  border-left: 1px solid rgba(0,0,0,0.5);
+  border-right: 1px solid rgba(0,0,0,0.5);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+}
+/* Tiny gilt corner ornaments on each page. Drawn with conic gradients so we
+   don't ship more assets. */
+.page-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  background:
+    radial-gradient(circle at 8px 8px, rgba(244,201,93,0.85) 0 4px, transparent 5px),
+    linear-gradient(45deg, transparent 50%, rgba(140,95,30,0.45) 50%, transparent 56%);
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+.page-corner.tl { top: 8px; left: 8px;  transform: rotate(0deg); }
+.page-corner.tr { top: 8px; right: 8px; transform: rotate(90deg); }
+.page-corner.bl { bottom: 8px; left: 8px; transform: rotate(-90deg); }
+.page-corner.br { bottom: 8px; right: 8px; transform: rotate(180deg); }
+
+.codex-portrait {
+  display: block;
+  width: 260px;
+  height: 260px;
+  margin: 8px auto 18px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 6px solid var(--gold-deep);
+  outline: 1px solid var(--gold);
+  outline-offset: -8px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.4),
+    0 8px 22px rgba(0,0,0,0.5);
+  background: #f8edd1;
+}
+#codex h2 {
+  margin: 0 0 4px;
+  font-size: clamp(28px, 4vw, 38px);
+  font-style: italic;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+}
+.codex-role {
+  margin: 0 0 18px;
+  color: var(--ink-faint);
+  font-style: italic;
+  font-size: 15px;
+}
+.codex-story {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.6;
+  font-style: italic;
+  max-width: 380px;
+  text-align: left;
+}
+
+.book-page.right h3 {
+  margin: 4px 0 14px;
+  font-size: 22px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  color: var(--gold-deep);
+  border-bottom: 1px solid rgba(140, 95, 30, 0.4);
+  padding-bottom: 8px;
+  text-align: left;
+}
+.codex-discoveries {
+  list-style: none;
+  counter-reset: discoveries;
+  padding: 0;
+  margin: 0 0 18px;
+  color: var(--ink-soft);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.codex-discoveries li {
+  position: relative;
+  padding: 7px 0 7px 28px;
+  border-top: 1px dashed rgba(80, 50, 20, 0.22);
+  counter-increment: discoveries;
+}
+.codex-discoveries li:first-child { border-top: 0; }
+.codex-discoveries li::before {
+  content: counter(discoveries);
+  position: absolute;
+  left: 0; top: 7px;
+  width: 20px;
+  text-align: right;
+  color: var(--gold-deep);
+  font-style: italic;
+}
+.codex-discoveries .empty {
+  border-top: 0;
+  padding-left: 0;
+  color: var(--ink-faint);
+}
+.codex-discoveries .empty::before { content: ""; }
+
+.codex-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(80, 50, 20, 0.22);
+}
+.codex-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 1.5px solid var(--gold-deep);
+  object-fit: cover;
+  cursor: pointer;
+  background: #f8edd1;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35), 0 1px 3px rgba(0,0,0,0.3);
+  transition: transform 0.15s var(--ease-soft);
+}
+.codex-thumb:hover  { transform: translateY(-2px) scale(1.05); }
+.codex-thumb.active { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(244,201,93,0.4), 0 0 14px rgba(244,201,93,0.5); }
+.codex-thumb.locked { filter: sepia(0.7) brightness(0.55); cursor: not-allowed; }
+
+@media (max-width: 800px) {
+  .book { grid-template-columns: 1fr; max-height: 100%; }
+  .book-spine { display: none; }
+  .codex-portrait { width: 180px; height: 180px; }
+}
+
 /* --- Hatch reveal --------------------------------------------------------- */
 
 #reveal {
