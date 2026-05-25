@@ -1,5 +1,7 @@
 # BlueChicken — The Hatchling World (3D)
 
+![The Hatchling World — nine hatchlings in a sunset valley](docs/hero.png)
+
 A small, dependency-free 3D web app. Nine eggs, nine very different souls inside, and a living valley where wolves, UFOs, polar bears, winters, and meteor showers all visit on their own schedule.
 
 ## Run
