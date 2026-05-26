@@ -230,6 +230,7 @@ const bluechicken = {
       return true;
     };
     const cluck = () => { if (world.audio && world.audio.cluck) world.audio.cluck(); };
+    const emote = (emoji) => { if (world.emoteActor) world.emoteActor(self, emoji); };
     // Aim Blue's heading toward another actor she wants to be near (huddle).
     // Returns true if she found one; false if she's the only one out.
     const turnToNearestPeer = () => {
@@ -250,6 +251,7 @@ const bluechicken = {
       // ---- scheduled visitors / weather ----
       case "ufo":
         cluck();
+        emote("🛸");
         world.hopActor(self, 0.45, 500);
         self.joy = Math.min(1, self.joy + 0.05);
         if (once("blue/ufo")) world.discover(self.id, "Watched a UFO drift overhead.");
@@ -258,6 +260,7 @@ const bluechicken = {
         // A small bow toward the visitor: dip down then rise. She walks
         // toward the nearest peer afterward so the visitor finds the flock.
         cluck();
+        emote("👋");
         world.hopActor(self, -0.15, 700);
         turnToNearestPeer();
         self.joy = Math.min(1, self.joy + 0.10);
@@ -265,6 +268,8 @@ const bluechicken = {
         break;
       case "wolf":
         // Crouch low, point away from the valley's edge, and stay quiet.
+        emote("😨");
+        self.mood = "scared";
         self.joy = Math.max(0, self.joy - 0.04);
         self.heading = Math.atan2(-self.mesh.position.z, -self.mesh.position.x);
         if (once("blue/wolf")) world.discover(self.id, "Hid still until the wolf passed.");
@@ -272,6 +277,8 @@ const bluechicken = {
       case "winter":
         // Fluffs up and heads toward another hatchling — the warm spot others
         // gather around. Huddle is the visible behavior here.
+        emote("🥶");
+        self.mood = "cold";
         self.joy = Math.max(0, self.joy - 0.02);
         turnToNearestPeer();
         if (once("blue/winter")) world.discover(self.id, "Fluffed up against the chill.");
@@ -279,6 +286,7 @@ const bluechicken = {
       case "snowfall":
         // Hop in the snow and leave a tiny pale footprint trail.
         cluck();
+        emote("❄️");
         world.hopActor(self, 0.35, 450);
         self.joy = Math.min(1, self.joy + 0.05);
         for (let i = 0; i < 3; i++) {
@@ -289,6 +297,8 @@ const bluechicken = {
       case "thaw":
         // Celebratory double-hop as the cold breaks.
         cluck();
+        emote("🌷");
+        self.mood = "radiant";
         world.hopActor(self, 0.55, 500);
         setTimeout(() => world.hopActor(self, 0.4, 400), 520);
         self.joy = Math.min(1, self.joy + 0.08);
@@ -296,6 +306,7 @@ const bluechicken = {
         break;
       case "auroraBorealis":
         // Gaze up, soft joy lift.
+        emote("✨");
         world.hopActor(self, 0.25, 700);
         self.joy = Math.min(1, self.joy + 0.06);
         if (once("blue/auroraBorealis")) world.discover(self.id, "Watched the sky paint itself.");
@@ -303,37 +314,44 @@ const bluechicken = {
       case "meteor":
         // A wishful little hop.
         cluck();
+        emote("⭐");
         world.hopActor(self, 0.45, 500);
         self.joy = Math.min(1, self.joy + 0.07);
         if (once("blue/meteor")) world.discover(self.id, "Made a wish on a streak of fire.");
         break;
       case "eclipse":
         // Settles down — calm, not afraid.
+        emote("🌑");
         self.joy = Math.max(0, self.joy - 0.02);
         if (once("blue/eclipse")) world.discover(self.id, "Sat quietly through the dimming.");
         break;
 
       // ---- peer-special cheers (broadcast from EventDirector.run) ----
       case "constellation":
+        emote("⭐");
         world.hopActor(self, 0.3, 450);
         self.joy = Math.min(1, self.joy + 0.04);
         if (once("blue/constellation")) world.discover(self.id, "Cheered Aurora's star-song.");
         break;
       case "rainbow":
+        emote("🌈");
         world.hopActor(self, 0.35, 450);
         self.joy = Math.min(1, self.joy + 0.05);
         if (once("blue/rainbow")) world.discover(self.id, "Caught Glimmer's rainbow on her wing.");
         break;
       case "pipRain":
+        emote("💧");
         world.hopActor(self, 0.3, 500);
         self.joy = Math.min(1, self.joy + 0.04);
         if (once("blue/pipRain")) world.discover(self.id, "Danced under Pip's pocket storm.");
         break;
       case "memoryBubble":
+        emote("💭");
         world.hopActor(self, 0.2, 400);
         self.joy = Math.min(1, self.joy + 0.03);
         break;
       case "rebirth":
+        emote("🔥");
         world.hopActor(self, 0.4, 500);
         self.joy = Math.min(1, self.joy + 0.05);
         if (once("blue/rebirth")) world.discover(self.id, "Cheered Ember's rebirth in flame.");
