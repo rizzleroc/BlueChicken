@@ -24,15 +24,18 @@ renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
-camera.position.set(14, 10, 22);
-camera.lookAt(0, 1.5, 0);
+// Closer default than before — the previous 14/10/22 placed the camera so far
+// the ring of eggs at radius 10 read as little ground dots. This frames the
+// whole ring of unhatched eggs in view, with the ground glowing under each.
+camera.position.set(8, 7, 16);
+camera.lookAt(0, 1.0, 0);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1.5, 0);
+controls.target.set(0, 1.0, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.maxPolarAngle = Math.PI / 2.05;  // don't dip below the ground
-controls.minDistance = 6;
+controls.minDistance = 4;
 controls.maxDistance = 50;
 controls.update();
 
@@ -210,8 +213,15 @@ canvas.addEventListener("pointerdown", (ev) => {
   ev.preventDefault();
 });
 
+// Hover cursor — make eggs/actors discoverable: when the pointer crosses one,
+// the cursor turns into a pointer so the user reads "this is clickable."
 canvas.addEventListener("pointermove", (ev) => {
-  if (!drag) return;
+  if (!drag) {
+    setPointer(ev);
+    const hit = pickAtPointer();
+    canvas.style.cursor = hit ? "pointer" : "default";
+    return;
+  }
   const dx = ev.clientX - drag.startX;
   const dy = ev.clientY - drag.startY;
   if (Math.hypot(dx, dy) > 6) drag.moved = true;

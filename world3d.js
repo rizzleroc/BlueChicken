@@ -75,7 +75,10 @@ export class World {
     };
 
     // localStorage key. Bump if the snapshot shape ever breaks back-compat.
-    this._saveKey = "bluechicken/hatchling-world/v1";
+    // v2: bumped because v1 saves from earlier iterations could leave a user
+    // with only one hatched chick and no eggs visible — fresh slate every
+    // time we materially change egg behavior so the world re-presents itself.
+    this._saveKey = "bluechicken/hatchling-world/v2";
 
     this.updaters = []; // per-frame callbacks registered by events
 
@@ -729,14 +732,106 @@ export class World {
   // ---- actors -------------------------------------------------------------
 
   placeEgg(charDef, position) {
-    const mesh = charDef.buildEgg();
-    mesh.position.copy(position);
-    mesh.userData = { kind: "egg", charId: charDef.id };
-    // make every mesh under the egg pickable by raycaster via userData on parents
-    mesh.traverse((c) => { if (c.isMesh) c.userData.eggRef = mesh; });
-    this.scene.add(mesh);
-    this.eggs[charDef.id] = { mesh, taps: 0, charDef, basePos: position.clone(), bobPhase: Math.random() * 10 };
-    return mesh;
+    // Wrap the egg in a presentation group so we can attach a glowing pedestal
+    // halo + a floating name label without those objects' user data competing
+    // with raycast picking. Pickable surfaces (the egg ovoid + the halo disc)
+    // all walk back to the wrap group via userData.eggRef.
+    const wrap = new THREE.Group();
+    wrap.position.copy(position);
+    wrap.userData = { kind: "egg", charId: charDef.id };
+
+    // Egg geometry from the character (a stylized ovoid + character-specific
+    // decorations). Scale up — at the default OrbitControls distance, the
+    // original 0.45-radius eggs looked like rounding errors on the ground.
+    const eggArt = charDef.buildEgg();
+    eggArt.scale.setScalar(1.8);
+    eggArt.userData.eggRef = wrap;
+    eggArt.traverse((c) => { if (c.isMesh) c.userData.eggRef = wrap; });
+    wrap.add(eggArt);
+
+    // Glowing pedestal halo — a flat disc on the ground, additive blended,
+    // tinted to the character's accent. Reads as "I'm here, look here" from
+    // any camera angle, and the colour hints at who's inside.
+    const haloColor = (charDef.palette && (charDef.palette.accent || charDef.palette.body)) || 0xfff4d8;
+    const halo = new THREE.Mesh(
+      new THREE.CircleGeometry(1.5, 32),
+      new THREE.MeshBasicMaterial({
+        color: haloColor,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    halo.rotation.x = -Math.PI / 2;
+    // Slightly above the painted ground texture so it isn't z-fought into
+    // invisibility. Flying / floating eggs put the halo at y=0 since they
+    // shouldn't carry a pedestal at altitude — keep it tied to the ground.
+    halo.position.y = -position.y + 0.04;
+    halo.userData.eggRef = wrap;
+    wrap.add(halo);
+
+    // Floating name label so the user reads "Aurora" / "Magma" / etc. and
+    // knows there's something specific waiting in each egg. The label is a
+    // canvas-rendered sprite — readable from any camera angle.
+    const label = this._makeLabelSprite(charDef.name);
+    label.position.y = 1.2;
+    label.userData.eggRef = wrap;
+    wrap.add(label);
+
+    this.scene.add(wrap);
+    this.eggs[charDef.id] = {
+      mesh: wrap, taps: 0, charDef,
+      basePos: position.clone(), bobPhase: Math.random() * 10,
+      eggArt, halo, label,
+    };
+    return wrap;
+  }
+
+  // Canvas-painted text sprite. Cached per text string so repeat names don't
+  // re-rasterize. Used for the floating egg name labels.
+  _makeLabelSprite(text) {
+    this._labelCache = this._labelCache || {};
+    let tex = this._labelCache[text];
+    if (!tex) {
+      const w = 384, h = 96;
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, w, h);
+      // Painted-card backing so labels stay legible over any 3D backdrop.
+      const radius = 18;
+      ctx.fillStyle = "rgba(20, 14, 6, 0.55)";
+      const pad = 16;
+      this._roundRect(ctx, pad, pad, w - pad * 2, h - pad * 2, radius);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(244, 201, 93, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.font = "italic 40px Cochin, Iowan Old Style, Palatino, Georgia, serif";
+      ctx.fillStyle = "#fff5d2";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, w / 2, h / 2 + 2);
+      tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.minFilter = THREE.LinearFilter;
+      this._labelCache[text] = tex;
+    }
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const s = new THREE.Sprite(mat);
+    s.scale.set(2.4, 0.6, 1);
+    return s;
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x,     y + h, r);
+    ctx.arcTo(x,     y + h, x,     y,     r);
+    ctx.arcTo(x,     y,     x + w, y,     r);
+    ctx.closePath();
   }
 
   tapEgg(charId) {
@@ -878,22 +973,31 @@ export class World {
     this._applyTimeBlend(dt);
     this.events.tick(performance.now());
 
-    // Egg bob & wiggle.
+    // Egg presentation: bob/spin/wiggle the inner eggArt (NOT the wrap so the
+    // pedestal halo stays glued to the ground). Halo gently pulses; label
+    // stays put. Cracks visualized as a per-tap scale-down on the egg.
     const now = performance.now();
     for (const id in this.eggs) {
       const e = this.eggs[id];
-      e.mesh.position.y = e.basePos.y + Math.sin(now * 0.002 + e.bobPhase) * 0.05;
-      if (e.wiggleT) {
-        const wt = (now - e.wiggleT) / 600;
-        if (wt < 1) {
-          e.mesh.rotation.z = Math.sin(wt * Math.PI * 4) * (0.4 * (1 - wt));
-        } else {
-          e.mesh.rotation.z = 0;
-          e.wiggleT = 0;
+      const art = e.eggArt;
+      if (art) {
+        art.position.y = Math.sin(now * 0.002 + e.bobPhase) * 0.12;
+        // Slow Y spin so the user's eye catches motion across the ring.
+        art.rotation.y = now * 0.0007 + e.bobPhase;
+        if (e.wiggleT) {
+          const wt = (now - e.wiggleT) / 600;
+          if (wt < 1) {
+            art.rotation.z = Math.sin(wt * Math.PI * 4) * (0.4 * (1 - wt));
+          } else {
+            art.rotation.z = 0;
+            e.wiggleT = 0;
+          }
         }
+        art.scale.setScalar(1.8 * (1 - e.taps * 0.04));
       }
-      // Cracks: scale down slightly as taps accrue (visual cue).
-      e.mesh.scale.setScalar(1 - e.taps * 0.02);
+      if (e.halo && e.halo.material) {
+        e.halo.material.opacity = 0.45 + Math.sin(now * 0.0014 + e.bobPhase) * 0.18;
+      }
     }
 
     // Actor wander.
