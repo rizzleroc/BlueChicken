@@ -60,7 +60,9 @@ export class World {
 
     this._buildLights();
     this._buildSkyDome();
+    this._buildCelestial();   // farm-vibe visible sun + moon + clouds
     this._buildGround();
+    this._buildFence();       // white picket-fence ring around the play area
     this._scatterScenery();
     this._buildStars();
 
@@ -162,6 +164,194 @@ export class World {
     this.skyBottom = new THREE.Color(0xc8e6f7);
   }
 
+  // Visible sun + moon + a handful of fluffy clouds drawn procedurally. These
+  // ride above the sky dome so they composite in front of the gradient. The
+  // tick loop tracks the sun/moon to the same arc that drives the directional
+  // light, so the lit-up disc visually agrees with where the shadows fall.
+  _buildCelestial() {
+    // Procedural sun texture: bright yellow disc + radial glow.
+    const sunTex = this._makeDiscTexture(512, ["#fffbcc", "#ffe98a", "#ffb84a", "rgba(255,184,74,0)"]);
+    this.sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunTex, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }));
+    this.sunSprite.scale.setScalar(18);
+    this.scene.add(this.sunSprite);
+
+    // Procedural moon: pale-cream disc + softer halo.
+    const moonTex = this._makeDiscTexture(384, ["#fbf6e8", "#dfe4f4", "#9aaad0", "rgba(154,170,208,0)"]);
+    this.moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: moonTex, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }));
+    this.moonSprite.scale.setScalar(10);
+    this.scene.add(this.moonSprite);
+
+    // Cloud sprites — 5 fluffy clouds scattered around the sky dome. Static
+    // positions so the eye finds the same shapes each session.
+    const cloudTex = this._makeCloudTexture();
+    this.clouds = [];
+    const cloudPlacements = [
+      { x: -30, y: 28, z: -38, scale: 14 },
+      { x:  35, y: 30, z: -42, scale: 18 },
+      { x: -45, y: 24, z:  30, scale: 12 },
+      { x:  40, y: 26, z:  20, scale: 16 },
+      { x:   0, y: 32, z: -55, scale: 22 },
+    ];
+    for (const p of cloudPlacements) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: cloudTex, transparent: true, depthWrite: false, opacity: 0.85,
+      }));
+      sprite.position.set(p.x, p.y, p.z);
+      sprite.scale.setScalar(p.scale);
+      sprite.userData.baseX = p.x;
+      sprite.userData.drift = rand(0.02, 0.06);
+      this.scene.add(sprite);
+      this.clouds.push(sprite);
+    }
+  }
+
+  // Radial-gradient disc, used for sun + moon. `colors` is an array of
+  // colorstops; we space them evenly over the radius.
+  _makeDiscTexture(size, colors) {
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    colors.forEach((col, i) => grad.addColorStop(i / (colors.length - 1), col));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  // Fluffy white cloud, painted as a cluster of soft overlapping blobs.
+  _makeCloudTexture() {
+    const size = 512;
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    const blobs = [
+      [256, 270, 90, 1.0],
+      [180, 260, 70, 0.85],
+      [330, 260, 80, 0.85],
+      [220, 230, 55, 0.7],
+      [300, 220, 60, 0.7],
+      [260, 215, 50, 0.6],
+    ];
+    for (const [x, y, r, alpha] of blobs) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0,   `rgba(255,255,255,${alpha})`);
+      g.addColorStop(0.7, `rgba(245,248,255,${alpha * 0.4})`);
+      g.addColorStop(1,   "rgba(245,248,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  // White picket-fence ring around the perimeter of the play area. Each
+  // section is a billboard sprite using a procedurally-painted canvas of
+  // four picket posts joined by two horizontal rails. The ring sits just
+  // beyond the home ring of eggs (radius 13) so it frames the action.
+  _buildFence() {
+    const tex = this._makeFenceTexture();
+    const RADIUS = 13;
+    const COUNT = 22;
+    const FENCE_HEIGHT = 1.3;
+    const ASPECT = 1.6; // wider than tall — matches the texture's 3:2 layout
+    for (let i = 0; i < COUNT; i++) {
+      const ang = (i / COUNT) * Math.PI * 2;
+      const x = Math.cos(ang) * RADIUS;
+      const z = Math.sin(ang) * RADIUS;
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
+      }));
+      sprite.center.set(0.5, 0);
+      sprite.scale.set(FENCE_HEIGHT * ASPECT, FENCE_HEIGHT, 1);
+      sprite.position.set(x, 0, z);
+      this.scene.add(sprite);
+    }
+  }
+
+  // Procedurally paint a cute white picket fence section onto a canvas.
+  // Four vertical posts (tops pointed) joined by two horizontal rails.
+  // Cream-white with subtle violet shadow to match the painterly palette.
+  _makeFenceTexture() {
+    const W = 384, H = 256;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    // posts: 4 evenly-spaced, each with a pointed top
+    const postW = 24;
+    const xs = [W * 0.13, W * 0.38, W * 0.62, W * 0.87];
+    const postTop = 30;
+    const postBottom = H - 8;
+    const drawPost = (cx) => {
+      // shadow
+      ctx.fillStyle = "rgba(80, 60, 110, 0.32)";
+      ctx.beginPath();
+      ctx.moveTo(cx - postW/2 + 3, postTop + 6);
+      ctx.lineTo(cx + 3, postTop - 12);
+      ctx.lineTo(cx + postW/2 + 3, postTop + 6);
+      ctx.lineTo(cx + postW/2 + 3, postBottom + 4);
+      ctx.lineTo(cx - postW/2 + 3, postBottom + 4);
+      ctx.closePath();
+      ctx.fill();
+      // post fill
+      const grad = ctx.createLinearGradient(cx - postW/2, 0, cx + postW/2, 0);
+      grad.addColorStop(0,   "#fffaf2");
+      grad.addColorStop(0.6, "#ffffff");
+      grad.addColorStop(1,   "#e8dfd0");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(cx - postW/2, postTop + 6);
+      ctx.lineTo(cx, postTop - 12);
+      ctx.lineTo(cx + postW/2, postTop + 6);
+      ctx.lineTo(cx + postW/2, postBottom);
+      ctx.lineTo(cx - postW/2, postBottom);
+      ctx.closePath();
+      ctx.fill();
+      // dark outline
+      ctx.strokeStyle = "rgba(80,60,110,0.4)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    };
+    // rails behind posts (drawn first so posts sit on top)
+    const drawRail = (y) => {
+      ctx.fillStyle = "rgba(80, 60, 110, 0.32)";
+      ctx.fillRect(0, y + 3, W, 16);
+      const railGrad = ctx.createLinearGradient(0, y, 0, y + 16);
+      railGrad.addColorStop(0, "#ffffff");
+      railGrad.addColorStop(1, "#e8dfd0");
+      ctx.fillStyle = railGrad;
+      ctx.fillRect(0, y, W, 16);
+      ctx.strokeStyle = "rgba(80,60,110,0.4)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, y, W, 16);
+    };
+    drawRail(60);
+    drawRail(155);
+    for (const x of xs) drawPost(x);
+    // tiny pastel flower at the base, V1-style charm
+    ctx.fillStyle = "#ffd1e8";
+    ctx.beginPath(); ctx.arc(W * 0.5, postBottom - 4, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffe26a";
+    ctx.beginPath(); ctx.arc(W * 0.5, postBottom - 4, 2, 0, Math.PI * 2); ctx.fill();
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    return tex;
+  }
+
   _buildGround() {
     // Round disc of ground with subtle vertex noise for organic shape.
     const geom = new THREE.CircleGeometry(GROUND_RADIUS, 64);
@@ -233,13 +423,23 @@ export class World {
       const r = 8 + Math.random() * 22;
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
-    // wildflower specks
-    ctx.globalAlpha = 0.75;
-    const flowers = ["#ffd1e8", "#ffe26a", "#bba2ff", "#ffac6b", "#a0e8c3", "#ffffff"];
-    for (let i = 0; i < 240; i++) {
+    // wildflower specks — denser (V1 farm vibe: bright meadow full of bloom)
+    ctx.globalAlpha = 0.85;
+    const flowers = ["#ffd1e8", "#ffe26a", "#bba2ff", "#ffac6b", "#a0e8c3", "#ffffff", "#ff8aae", "#9be3ff"];
+    for (let i = 0; i < 640; i++) {
       ctx.fillStyle = flowers[Math.floor(Math.random() * flowers.length)];
       const x = Math.random() * size, y = Math.random() * size;
-      ctx.beginPath(); ctx.arc(x, y, 1.2 + Math.random() * 2.2, 0, Math.PI * 2); ctx.fill();
+      // Petal cluster: a center + 3-5 small ring petals for a flower silhouette
+      const cx = x, cy = y;
+      const r = 1.6 + Math.random() * 2.2;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      const petals = 4 + Math.floor(Math.random() * 2);
+      for (let p = 0; p < petals; p++) {
+        const a = (p / petals) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.globalAlpha = 1;
     const tex = new THREE.CanvasTexture(c);
@@ -497,11 +697,41 @@ export class World {
       }
       col.needsUpdate = true;
     }
-    // Sun position rides an arc across the cycle.
+    // Sun position rides an arc across the cycle. Lights + visible sprite
+    // share the same arc — sunSprite is offset further out so it lives on
+    // the sky-dome wall.
     const fullT = (this.timeIdx + t) / TIMES.length; // 0..1 over full cycle
     const ang = fullT * Math.PI * 2;
     this.sun.position.set(Math.cos(ang) * 30, Math.max(2, Math.sin(ang) * 30), Math.sin(ang) * 10);
     this.sun.intensity = Math.max(0.05, Math.sin(ang) * 1.6);
+
+    // Visible sun + moon sprites — same arc, larger radius so they sit far in
+    // the sky. The moon trails 180° behind the sun so we always have one or
+    // the other clearly in view.
+    if (this.sunSprite) {
+      const sx = Math.cos(ang) * 70;
+      const sy = Math.max(-10, Math.sin(ang) * 50);
+      const sz = Math.sin(ang) * 20 - 40;
+      this.sunSprite.position.set(sx, sy, sz);
+      // Fade out below the horizon so we don't see it at night.
+      this.sunSprite.material.opacity = Math.max(0, Math.min(1, (sy + 5) / 20));
+    }
+    if (this.moonSprite) {
+      const mang = ang + Math.PI;
+      const mx = Math.cos(mang) * 70;
+      const my = Math.max(-10, Math.sin(mang) * 50);
+      const mz = Math.sin(mang) * 20 - 40;
+      this.moonSprite.position.set(mx, my, mz);
+      this.moonSprite.material.opacity = Math.max(0, Math.min(1, (my + 5) / 20));
+    }
+    // Clouds drift slowly with wraparound. Driven by wall-clock so they keep
+    // moving regardless of game time.
+    if (this.clouds) {
+      const now = performance.now() * 0.001;
+      for (const c of this.clouds) {
+        c.position.x = ((c.userData.baseX + now * c.userData.drift * 3 + 80) % 160) - 80;
+      }
+    }
     // Stars fade in at night, with a small twinkle (low-amp sinusoidal jitter
     // on the global material opacity — cheap and atmospheric without touching
     // per-vertex attributes).
