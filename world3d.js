@@ -1203,10 +1203,11 @@ export class World {
     actor.mesh = m;
   }
 
-  // Priority: GLB (if a Tripo model is in /docs/models/) → painted sprite
-  // billboard (if the portrait texture loaded) → procedural buildBody().
-  // The sprite is always good if the texture exists; GLB only "wins" when it's
-  // explicitly present because we know that's the highest-fidelity result.
+  // Priority: GLB (Tripo model in /docs/models/ — best fidelity when present)
+  // → procedural buildBody() (real 3D mesh with depth and silhouette)
+  // → painted sprite billboard as final fallback. User feedback: "no more
+  // cards showing should be using MCP to make 3D models" — the procedural
+  // mesh is the closest thing we have to a 3D model while we wait on Tripo.
   _buildActorMesh(charDef) {
     const glb = this.modelCache[charDef.id];
     if (glb) {
@@ -1216,9 +1217,17 @@ export class World {
       });
       return cloned;
     }
-    const tex = this.spriteCache[charDef.id];
-    if (tex) return this._buildSpriteActor(charDef, tex);
-    return charDef.buildBody();
+    // Procedural 3D mesh — scale up so it reads at the default camera distance.
+    // Per-character spriteScale was tuned for billboards; the procedural body
+    // is roughly the right shape but smaller in units, so we apply a 2× boost
+    // by default (overridden by charDef.proceduralScale if set).
+    const proc = charDef.buildBody();
+    // 2× the sprite-scale gives a chunky, readable silhouette at the default
+    // OrbitControls distance. Aurora the whale ends up ~3.6 units wide,
+    // Blue ~2.4 units tall — visibly 3D, not a pinprick.
+    const scale = charDef.proceduralScale || (charDef.spriteScale || 2) * 2.0;
+    proc.scale.setScalar(scale);
+    return proc;
   }
 
   // Painted-cutout actor: a camera-facing Sprite using the character's

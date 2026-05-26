@@ -232,7 +232,16 @@ ol,ul{ list-style: none; }
   transform: translateY(-1px);
 }
 
-/* ============ NEEDS (left) ============ */
+/* ============ NEEDS (left) ============
+   Hidden by default — user feedback: "no more cards showing." The 3D world
+   owns the screen; live state shows in the topbar (name + vibe + life-stage
+   + hatched count) and the bottom action bar. Add the .show class to surface
+   either card if a future toggle re-introduces them. */
+.needs, .stats {
+  display: none !important;
+}
+.needs.show, .stats.show { display: flex !important; }
+
 .needs{
   grid-area: needs;
   align-self: center;
