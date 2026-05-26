@@ -416,6 +416,21 @@ export class World {
 
     this.scene.add(barn);
     this.barn = barn;
+    // Toys Blue can interact with when nobody's watching her. Each entry is
+    // a world position + the kind of interaction (peck = head bob, hop = jump
+    // on it). The behavior loop in _tickBlue cycles through these when she's
+    // in the "playing" state.
+    this.toys = [
+      { pos: new THREE.Vector3(1.4, 0.0, 2.2),   kind: "peck",  label: "bowl" },
+      { pos: new THREE.Vector3(-3.4, 0.0, -2.6), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(-4.2, 0.0, -1.4), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(3.6,  0.0, -2.4), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(3.0,  0.0,  2.6), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(0.0,  0.0, -3.6), kind: "preen", label: "coop" },
+    ];
+    // The "visit spot" — where Blue stands when she's facing the camera in
+    // care view. Slightly in front of center so the camera reads her face on.
+    this.visitSpot = new THREE.Vector3(0, 0, 2.5);
   }
 
   // ------------------------------------------------------------------
@@ -1522,6 +1537,10 @@ export class World {
   _tickActor(actor, dt) {
     const def = actor.def;
     const m = actor.mesh;
+    // Blue gets her own behavior state machine: visits the camera in CARE
+    // view, plays with the coop toys (peck the bowl, hop on bales) when
+    // left alone (VALLEY view, or after enough idle seconds in CARE).
+    if (def.isGateway && this._tickBlue(actor, dt)) return;
     // Wander within the ground disc.
     const speed = def.id === "magma" && actor._dashUntil > performance.now() ? 8 : 1.2;
     actor.heading += rand(-0.02, 0.02);
@@ -1568,6 +1587,150 @@ export class World {
     if (def.id === "whisper" && tname === "night" && Math.random() < 0.0004) this.teleportActor(actor, null);
 
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
+  }
+
+  // ------------------------------------------------------------------
+  // Blue's behavior state machine — runs only for her, replaces the
+  // generic wander. Two states:
+  //   visiting → walk to this.visitSpot, face the camera, idle there.
+  //   playing  → cycle through this.toys (peck the feed bowl, hop on a
+  //              hay bale, preen near the coop) when she's left alone.
+  // CARE view + recent attention pulse keeps her visiting; long idle in
+  // CARE or any time in VALLEY moves her to playing.
+  // ------------------------------------------------------------------
+  _tickBlue(actor, dt) {
+    if (!this.toys || !this.visitSpot) return false; // barn not built yet
+    const m = actor.mesh;
+    const now = performance.now();
+    actor._blue = actor._blue || {
+      mode: "visiting",
+      toyIdx: 0,
+      arrivedAt: 0,
+      lingerMs: 1800,
+      attentionUntil: now + 6000, // start out attentive (player just opened the app)
+    };
+    const s = actor._blue;
+
+    // Decide the desired mode. Recent attention OR being in care view biases
+    // her toward visiting; valley view OR long idle in care moves her to play.
+    const attentive = now < s.attentionUntil;
+    const wantsVisit = (this.view === "care") && attentive;
+    const desiredMode = wantsVisit ? "visiting" : "playing";
+    if (desiredMode !== s.mode) {
+      s.mode = desiredMode;
+      s.arrivedAt = 0;
+      // Pick a fresh toy each time she enters playing — keeps her moving.
+      if (s.mode === "playing") s.toyIdx = Math.floor(Math.random() * this.toys.length);
+    }
+
+    // Choose a target position for this frame.
+    const target = (s.mode === "visiting")
+      ? this.visitSpot
+      : this.toys[s.toyIdx].pos;
+    const dx = target.x - m.position.x;
+    const dz = target.z - m.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    // Walk speed scales with how far she has to go; she slows on arrival.
+    const speed = dist > 2 ? 2.2 : dist > 0.5 ? 1.4 : 0;
+    if (speed > 0) {
+      const ang = Math.atan2(dz, dx);
+      actor.heading = ang;
+      m.position.x += Math.cos(ang) * speed * dt / 1000;
+      m.position.z += Math.sin(ang) * speed * dt / 1000;
+    }
+
+    // On arrival: do the action for this state.
+    if (dist <= 0.5) {
+      if (s.arrivedAt === 0) {
+        s.arrivedAt = now;
+        if (s.mode === "visiting") {
+          // Face the camera so she "looks at" the player.
+          actor.heading = Math.atan2(
+            this.camera.position.z - m.position.z,
+            this.camera.position.x - m.position.x
+          );
+          this._blueGreet(actor);
+        } else {
+          // Toy interaction: peck / hop / preen.
+          this._blueToyInteract(actor, this.toys[s.toyIdx]);
+          s.lingerMs = 1800 + Math.random() * 1500;
+        }
+      } else if (now - s.arrivedAt > s.lingerMs && s.mode === "playing") {
+        // Move to the next toy.
+        s.toyIdx = (s.toyIdx + Math.floor(1 + Math.random() * (this.toys.length - 1))) % this.toys.length;
+        s.arrivedAt = 0;
+      } else if (s.mode === "visiting" && now - s.arrivedAt > 3000) {
+        // Subtle head re-aim every few seconds so she doesn't look frozen.
+        actor.heading = Math.atan2(
+          this.camera.position.z - m.position.z,
+          this.camera.position.x - m.position.x
+        ) + (Math.random() - 0.5) * 0.4;
+        s.arrivedAt = now;
+      }
+    }
+
+    // Vertical bob — taller when visiting (alert), gentler when playing.
+    const bobAmp = (s.mode === "visiting" && dist <= 0.5) ? 0.05 : 0.08;
+    m.position.y = 0.6 + Math.abs(Math.sin(now * 0.005 + actor.born * 0.0002)) * bobAmp;
+    m.rotation.y = -actor.heading + Math.PI / 2;
+
+    // Pulse her LEDs — chest disc + antenna bulb breathe slowly while
+    // visiting, flicker rapidly while pecking/playing. userData is set
+    // directly on the buildBody() group, which IS actor.mesh.
+    const led = m.userData && m.userData.led;
+    const bulb = m.userData && m.userData.antennaBulb;
+    if (led || bulb) {
+      const speedHz = s.mode === "visiting" ? 0.001 : 0.003;
+      const pulse = 0.7 + Math.sin(now * speedHz) * 0.3;
+      if (led && led.material) led.material.opacity = pulse;
+      if (bulb && bulb.material) bulb.material.opacity = pulse;
+    }
+
+    // Joy still ticks up while she's well-cared-for (matches the generic path).
+    const tname = this.timeName();
+    const pref = actor.def.prefersTime;
+    const joyRate = (pref === "any" || pref === tname) ? 0.00004 : 0.00002;
+    actor.joy = Math.min(1, actor.joy + dt * joyRate);
+
+    if (this.focus && this.focus.id === actor.id) this._refreshInspector();
+    return true; // we handled this actor
+  }
+
+  // Called when a care action fires — pulls Blue back to the visit spot so
+  // she "comes to see you" after a pet/feed/play.
+  attendToBlue(durMs = 6000) {
+    const blue = this.actors.find((a) => a.def && a.def.isGateway);
+    if (!blue) return;
+    blue._blue = blue._blue || { mode: "visiting", toyIdx: 0, arrivedAt: 0, lingerMs: 1800, attentionUntil: 0 };
+    blue._blue.attentionUntil = performance.now() + durMs;
+  }
+
+  _blueGreet(actor) {
+    // Soft cluck on arrival, but don't spam if she only just clucked.
+    const now = performance.now();
+    if (now - (actor._lastCluck || 0) > 4500) {
+      actor._lastCluck = now;
+      if (this.audio && this.audio.cluck) this.audio.cluck();
+    }
+  }
+
+  _blueToyInteract(actor, toy) {
+    // Hop / peck / preen visual reaction.
+    if (toy.kind === "peck") {
+      // Three rapid head-bob hops, low to the ground — pecks at the feed bowl.
+      this.hopActor(actor, -0.1, 200);
+      setTimeout(() => this.hopActor(actor, -0.1, 200), 240);
+      setTimeout(() => this.hopActor(actor, -0.1, 200), 480);
+      if (this.audio && this.audio.tap) this.audio.tap();
+    } else if (toy.kind === "hop") {
+      // Big hop up onto the hay bale.
+      this.hopActor(actor, 0.7, 500);
+      if (this.audio && this.audio.tap) this.audio.tap();
+    } else {
+      // Preen / settle — a calm half-hop.
+      this.hopActor(actor, 0.25, 600);
+    }
   }
 
   // ---- helpers used by specials/events ------------------------------------

@@ -648,6 +648,8 @@ function switchView(mode) {
   if (mode === "care") {
     controls.minDistance = 4;
     controls.maxDistance = 14;
+    // Entering care = you came back; Blue walks over to greet you.
+    world.attendToBlue(10000);
   } else {
     controls.minDistance = 4;
     controls.maxDistance = 50;
@@ -778,6 +780,9 @@ document.querySelectorAll(".action[data-care]").forEach((btn) => {
       // Brief actor reaction: pet/play/feed should jiggle Blue.
       const blue = world.actors.find((a) => a.id === BLUE.id);
       if (blue && k !== "sleep") world.petActor(blue);
+      // Tell Blue you're here — extends her "visiting" window so she walks
+      // back to the camera if she'd been off playing with a toy.
+      world.attendToBlue(8000);
     }
   };
 });
