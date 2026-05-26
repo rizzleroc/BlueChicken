@@ -60,9 +60,10 @@ export class World {
 
     this._buildLights();
     this._buildSkyDome();
-    this._buildCelestial();   // farm-vibe visible sun + moon + clouds
+    this._buildCelestial();   // visible sun + moon + pink-tinted clouds
+    this._buildMountainRing(); // dark purple horizon silhouettes (V1 aesthetic)
+    this._buildCenterMountain();// glowing-peaked pyramid in the distance
     this._buildGround();
-    this._buildFence();       // white picket-fence ring around the play area
     this._scatterScenery();
     this._buildStars();
 
@@ -226,7 +227,7 @@ export class World {
     return tex;
   }
 
-  // Fluffy white cloud, painted as a cluster of soft overlapping blobs.
+  // V1 PRD: clouds are dusk-pink/coral, not stark white.
   _makeCloudTexture() {
     const size = 512;
     const c = document.createElement("canvas");
@@ -242,9 +243,9 @@ export class World {
     ];
     for (const [x, y, r, alpha] of blobs) {
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0,   `rgba(255,255,255,${alpha})`);
-      g.addColorStop(0.7, `rgba(245,248,255,${alpha * 0.4})`);
-      g.addColorStop(1,   "rgba(245,248,255,0)");
+      g.addColorStop(0,   `rgba(255,200,194,${alpha})`);
+      g.addColorStop(0.55, `rgba(255,160,164,${alpha * 0.6})`);
+      g.addColorStop(1,   "rgba(255,170,170,0)");
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -255,16 +256,13 @@ export class World {
     return tex;
   }
 
-  // White picket-fence ring around the perimeter of the play area. Each
-  // section is a billboard sprite using a procedurally-painted canvas of
-  // four picket posts joined by two horizontal rails. The ring sits just
-  // beyond the home ring of eggs (radius 13) so it frames the action.
-  _buildFence() {
-    const tex = this._makeFenceTexture();
-    const RADIUS = 13;
-    const COUNT = 22;
-    const FENCE_HEIGHT = 1.3;
-    const ASPECT = 1.6; // wider than tall — matches the texture's 3:2 layout
+  // V1 PRD: dark purple mountain silhouettes form the horizon ring around
+  // the play area. 14 triangle billboards at radius ~32, varied heights,
+  // facing inward. Mountains read as a distant horizon rather than a fence.
+  _buildMountainRing() {
+    const tex = this._makeMountainTexture();
+    const RADIUS = 32;
+    const COUNT = 14;
     for (let i = 0; i < COUNT; i++) {
       const ang = (i / COUNT) * Math.PI * 2;
       const x = Math.cos(ang) * RADIUS;
@@ -273,15 +271,86 @@ export class World {
         map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
       }));
       sprite.center.set(0.5, 0);
-      sprite.scale.set(FENCE_HEIGHT * ASPECT, FENCE_HEIGHT, 1);
+      // Varied widths/heights so the ring doesn't feel uniform.
+      const h = 7 + Math.random() * 5;
+      const w = h * (1.4 + Math.random() * 0.6);
+      sprite.scale.set(w, h, 1);
       sprite.position.set(x, 0, z);
       this.scene.add(sprite);
     }
   }
 
-  // Procedurally paint a cute white picket fence section onto a canvas.
-  // Four vertical posts (tops pointed) joined by two horizontal rails.
-  // Cream-white with subtle violet shadow to match the painterly palette.
+  // A taller mountain pyramid stands behind the action with a tiny glowing
+  // peak — same V1 trick that draws the eye to the centre of the scene.
+  _buildCenterMountain() {
+    const tex = this._makeMountainTexture(true);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
+    }));
+    sprite.center.set(0.5, 0);
+    sprite.scale.set(28, 16, 1);
+    // Behind the egg ring (z negative = into screen from camera default).
+    sprite.position.set(0, 0, -28);
+    this.scene.add(sprite);
+    // Tiny warm glow at the peak — point light + small additive sprite.
+    const peakLight = new THREE.PointLight(0xffe28a, 0.7, 12, 2);
+    peakLight.position.set(0, 14, -28);
+    this.scene.add(peakLight);
+    const peakSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this._makeDiscTexture(128, ["#fffbcc", "#ffe98a", "rgba(255,184,74,0)"]),
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    peakSprite.scale.setScalar(1.5);
+    peakSprite.position.set(0, 14, -28);
+    this.scene.add(peakSprite);
+  }
+
+  // Paint a single dark-purple mountain silhouette. Pyramid form for the
+  // centre mountain, rounded ridges for the ring mountains.
+  _makeMountainTexture(isPyramid = false) {
+    const W = 512, H = 384;
+    const c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    // Two-stop gradient — dark to darker, makes the silhouette feel solid
+    // but lets the sky show through at the tip.
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#2a2348");
+    grad.addColorStop(1, "#1a1430");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    if (isPyramid) {
+      // Symmetric pyramid for the centre mountain
+      ctx.moveTo(W / 2, 24);
+      ctx.lineTo(W - 40, H);
+      ctx.lineTo(40, H);
+    } else {
+      // Rounded ridge — random control points so each pass looks different
+      ctx.moveTo(20, H);
+      ctx.lineTo(20, H * 0.78);
+      // 3 ridge peaks of slightly different heights
+      const peaks = [
+        [W * 0.22, H * (0.18 + Math.random() * 0.14)],
+        [W * 0.5,  H * (0.06 + Math.random() * 0.12)],
+        [W * 0.78, H * (0.22 + Math.random() * 0.16)],
+      ];
+      ctx.bezierCurveTo(W * 0.10, H * 0.55, peaks[0][0] - 30, peaks[0][1] + 30, peaks[0][0], peaks[0][1]);
+      ctx.bezierCurveTo(peaks[0][0] + 50, peaks[0][1] + 50, peaks[1][0] - 50, peaks[1][1] + 50, peaks[1][0], peaks[1][1]);
+      ctx.bezierCurveTo(peaks[1][0] + 50, peaks[1][1] + 50, peaks[2][0] - 30, peaks[2][1] + 30, peaks[2][0], peaks[2][1]);
+      ctx.bezierCurveTo(W * 0.9, peaks[2][1] + 40, W - 20, H * 0.55, W - 20, H * 0.78);
+      ctx.lineTo(W - 20, H);
+    }
+    ctx.closePath();
+    ctx.fill();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    return tex;
+  }
+
+  // (Old _makeFenceTexture kept as a stub for callers, but unused now.)
   _makeFenceTexture() {
     const W = 384, H = 256;
     const c = document.createElement("canvas");
@@ -391,53 +460,58 @@ export class World {
     this.scene.add(pond);
   }
 
-  // Draw a brush-stroke ground onto an offscreen canvas. Many overlapping
-  // soft circles of slightly-varied greens give the painterly feel, plus a
-  // handful of warm and floral accents.
+  // Draw a brush-stroke ground onto an offscreen canvas. V1 PRD palette: a
+  // dark-purple-grey plain with scattered painterly flower tufts + tiny
+  // vertical grass blades. No large green washes — V1's ground reads as
+  // night-dusk-tinted earth rather than a green meadow.
   _makePaintedGroundTexture() {
     const size = 1024;
     const c = document.createElement("canvas");
     c.width = c.height = size;
     const ctx = c.getContext("2d");
-    // base wash
-    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size * 0.55);
-    grad.addColorStop(0, "#69954b");
-    grad.addColorStop(1, "#3f5a30");
+    // Base wash — dark purple-grey with a subtle radial highlight to suggest
+    // a soft pool of light in the centre.
+    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.55);
+    grad.addColorStop(0, "#3a3551");
+    grad.addColorStop(1, "#1f1a30");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
-    // grass splotches
-    const greens = ["#5a8a3a", "#79a655", "#3f6128", "#88b466", "#4e7a36", "#a3c378"];
-    for (let i = 0; i < 1400; i++) {
-      ctx.fillStyle = greens[Math.floor(Math.random() * greens.length)];
-      ctx.globalAlpha = 0.22 + Math.random() * 0.4;
+    // Subtle darker speckles — texture variation, no big shapes.
+    ctx.globalAlpha = 0.15;
+    for (let i = 0; i < 600; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? "#2a2540" : "#4a3f60";
       const x = Math.random() * size, y = Math.random() * size;
-      const r = 8 + Math.random() * 38;
-      ctx.beginPath(); ctx.ellipse(x, y, r, r * (0.6 + Math.random() * 0.7), Math.random() * Math.PI, 0, Math.PI * 2); ctx.fill();
-    }
-    // dirt patches
-    ctx.globalAlpha = 0.35;
-    const dirts = ["#6b4a2a", "#7a5a36", "#553820"];
-    for (let i = 0; i < 70; i++) {
-      ctx.fillStyle = dirts[Math.floor(Math.random() * dirts.length)];
-      const x = Math.random() * size, y = Math.random() * size;
-      const r = 8 + Math.random() * 22;
+      const r = 3 + Math.random() * 8;
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
-    // wildflower specks — denser (V1 farm vibe: bright meadow full of bloom)
-    ctx.globalAlpha = 0.85;
-    const flowers = ["#ffd1e8", "#ffe26a", "#bba2ff", "#ffac6b", "#a0e8c3", "#ffffff", "#ff8aae", "#9be3ff"];
-    for (let i = 0; i < 640; i++) {
+    // Tiny vertical grass blades — pairs of thin lines coming up from a base
+    // point. Matches the V1 tufts visible on the dusk ground.
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1.2;
+    const grassColors = ["#5a8a3a", "#79a655", "#6fb46a", "#4e7a36", "#7ab472"];
+    for (let i = 0; i < 380; i++) {
+      ctx.strokeStyle = grassColors[Math.floor(Math.random() * grassColors.length)];
+      const bx = Math.random() * size, by = Math.random() * size;
+      const h = 4 + Math.random() * 8;
+      ctx.beginPath();
+      ctx.moveTo(bx, by); ctx.lineTo(bx - 1, by - h);
+      ctx.moveTo(bx, by); ctx.lineTo(bx + 1, by - h);
+      ctx.stroke();
+    }
+    // Painterly flower tufts — small pastel petal clusters scattered across
+    // the plain. Match V1's pink/yellow/white wildflower vocabulary.
+    ctx.globalAlpha = 0.9;
+    const flowers = ["#ffd1e8", "#ffe26a", "#bba2ff", "#ffac6b", "#ffffff", "#ff8aae", "#9be3ff"];
+    for (let i = 0; i < 320; i++) {
       ctx.fillStyle = flowers[Math.floor(Math.random() * flowers.length)];
-      const x = Math.random() * size, y = Math.random() * size;
-      // Petal cluster: a center + 3-5 small ring petals for a flower silhouette
-      const cx = x, cy = y;
-      const r = 1.6 + Math.random() * 2.2;
+      const cx = Math.random() * size, cy = Math.random() * size;
+      const r = 1.4 + Math.random() * 1.8;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-      const petals = 4 + Math.floor(Math.random() * 2);
+      const petals = 4;
       for (let p = 0; p < petals; p++) {
         const a = (p / petals) * Math.PI * 2;
         ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.55, 0, Math.PI * 2);
+        ctx.arc(cx + Math.cos(a) * r * 1.5, cy + Math.sin(a) * r * 1.5, r * 0.6, 0, Math.PI * 2);
         ctx.fill();
       }
     }
