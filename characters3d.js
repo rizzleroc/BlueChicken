@@ -143,11 +143,99 @@ const bluechicken = {
     for (const a of world.actors) a.joy = Math.min(1, a.joy + 0.05);
   },
   reactTo(eventId, world, self) {
-    // Blue is calm and warm to everything — gentle little joy bumps.
-    if (eventId === "ufo" || eventId === "auroraBorealis" || eventId === "meteor") {
-      self.joy = Math.min(1, self.joy + 0.04);
+    // Blue is the keeper. She greets every visitor in character — a calm hop,
+    // a gentle bow, a quiet vigil — so the world never passes her unnoticed.
+    // The "blue/<event>" flag gates the journal line so her log doesn't spam,
+    // but the visible reaction (hop / joy / heading) fires every time.
+    const once = (flag) => {
+      if (world.hasFlag(flag)) return false;
+      world.flagSeen(flag);
+      return true;
+    };
+    switch (eventId) {
+      // ---- scheduled visitors / weather ----
+      case "ufo":
+        world.hopActor(self, 0.45, 500);
+        self.joy = Math.min(1, self.joy + 0.05);
+        if (once("blue/ufo")) world.discover(self.id, "Watched a UFO drift overhead.");
+        break;
+      case "firstContact":
+        // A small bow toward the visitor: dip down then rise.
+        world.hopActor(self, -0.15, 700);
+        self.joy = Math.min(1, self.joy + 0.10);
+        if (once("blue/firstContact")) world.discover(self.id, "Bowed to the visitor from the stars.");
+        break;
+      case "wolf":
+        // Crouch low, point away from the valley's edge, and stay quiet.
+        self.joy = Math.max(0, self.joy - 0.04);
+        self.heading = Math.atan2(-self.mesh.position.z, -self.mesh.position.x);
+        if (once("blue/wolf")) world.discover(self.id, "Hid still until the wolf passed.");
+        break;
+      case "winter":
+        // Fluffs up and stays put — she's the warm spot others gather around.
+        self.joy = Math.max(0, self.joy - 0.02);
+        if (once("blue/winter")) world.discover(self.id, "Fluffed up against the chill.");
+        break;
+      case "snowfall":
+        // Hop in the snow and leave a tiny pale footprint trail.
+        world.hopActor(self, 0.35, 450);
+        self.joy = Math.min(1, self.joy + 0.05);
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => world.spawnFootprint(self.mesh.position, 0xcfe4f5), i * 140);
+        }
+        if (once("blue/snowfall")) world.discover(self.id, "Made tiny footprints in the snow.");
+        break;
+      case "thaw":
+        // Celebratory double-hop as the cold breaks.
+        world.hopActor(self, 0.55, 500);
+        setTimeout(() => world.hopActor(self, 0.4, 400), 520);
+        self.joy = Math.min(1, self.joy + 0.08);
+        if (once("blue/thaw")) world.discover(self.id, "Sang as the world warmed back.");
+        break;
+      case "auroraBorealis":
+        // Gaze up, soft joy lift.
+        world.hopActor(self, 0.25, 700);
+        self.joy = Math.min(1, self.joy + 0.06);
+        if (once("blue/auroraBorealis")) world.discover(self.id, "Watched the sky paint itself.");
+        break;
+      case "meteor":
+        // A wishful little hop.
+        world.hopActor(self, 0.45, 500);
+        self.joy = Math.min(1, self.joy + 0.07);
+        if (once("blue/meteor")) world.discover(self.id, "Made a wish on a streak of fire.");
+        break;
+      case "eclipse":
+        // Settles down — calm, not afraid.
+        self.joy = Math.max(0, self.joy - 0.02);
+        if (once("blue/eclipse")) world.discover(self.id, "Sat quietly through the dimming.");
+        break;
+
+      // ---- peer-special cheers (broadcast from EventDirector.run) ----
+      case "constellation":
+        world.hopActor(self, 0.3, 450);
+        self.joy = Math.min(1, self.joy + 0.04);
+        if (once("blue/constellation")) world.discover(self.id, "Cheered Aurora's star-song.");
+        break;
+      case "rainbow":
+        world.hopActor(self, 0.35, 450);
+        self.joy = Math.min(1, self.joy + 0.05);
+        if (once("blue/rainbow")) world.discover(self.id, "Caught Glimmer's rainbow on her wing.");
+        break;
+      case "pipRain":
+        world.hopActor(self, 0.3, 500);
+        self.joy = Math.min(1, self.joy + 0.04);
+        if (once("blue/pipRain")) world.discover(self.id, "Danced under Pip's pocket storm.");
+        break;
+      case "memoryBubble":
+        world.hopActor(self, 0.2, 400);
+        self.joy = Math.min(1, self.joy + 0.03);
+        break;
+      case "rebirth":
+        world.hopActor(self, 0.4, 500);
+        self.joy = Math.min(1, self.joy + 0.05);
+        if (once("blue/rebirth")) world.discover(self.id, "Cheered Ember's rebirth in flame.");
+        break;
     }
-    if (eventId === "wolf") self.joy = Math.max(0, self.joy - 0.03);
   },
 };
 

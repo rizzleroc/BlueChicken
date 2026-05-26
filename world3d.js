@@ -1400,12 +1400,18 @@ export class World {
 
   petActor(actor) {
     actor.joy = Math.min(1, actor.joy + 0.08);
-    // little bounce
+    this.hopActor(actor, 0.4, 400);
+  }
+
+  // Visible bounce-on-the-spot. Used by petActor and by reactTo() in characters
+  // who want a tactile little reaction (hop in joy, hop in surprise) — works for
+  // both procedural-mesh and sprite-billboard actors since we only mutate y.
+  hopActor(actor, height = 0.4, dur = 400) {
     const baseY = actor.mesh.position.y;
     const tStart = performance.now();
     const step = () => {
-      const t = Math.min(1, (performance.now() - tStart) / 400);
-      actor.mesh.position.y = baseY + Math.sin(t * Math.PI) * 0.4;
+      const t = Math.min(1, (performance.now() - tStart) / dur);
+      actor.mesh.position.y = baseY + Math.sin(t * Math.PI) * height;
       if (t < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
