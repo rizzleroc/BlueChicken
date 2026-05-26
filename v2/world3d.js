@@ -95,7 +95,7 @@ export class World {
     this.events = new EventDirector(this);
 
     // DOM hooks
-    this.toastEl = document.getElementById("toast");
+    this.toastEl = document.getElementById("floatMsg");  // V1 PRD: was #toast
     this.eventLabel = document.getElementById("event-label");
     this.timeIcon = document.getElementById("time-icon");
     this.timeLabel = document.getElementById("time-label");
@@ -402,8 +402,8 @@ export class World {
       calm:     ["·", "Calm"],
     };
     const [i, l] = map[name] || ["·", "Clear"];
-    this.weatherIcon.textContent = i;
-    this.weatherLabel.textContent = l;
+    if (this.weatherIcon)  this.weatherIcon.textContent  = i;
+    if (this.weatherLabel) this.weatherLabel.textContent = l;
   }
 
   cycleTime() {
@@ -470,8 +470,8 @@ export class World {
       this.timeIdx = (this.timeIdx + 1) % TIMES.length;
       const map = { dawn: ["☼", "Dawn"], day: ["☀", "Day"], dusk: ["☾", "Dusk"], night: ["✦", "Night"] };
       const [icon, label] = map[this.timeName()];
-      this.timeIcon.textContent = icon;
-      this.timeLabel.textContent = label;
+      if (this.timeIcon)  this.timeIcon.textContent  = icon;
+      if (this.timeLabel) this.timeLabel.textContent = label;
     }
     // Blend between current and next time-of-day color over the duration.
     const t = this.timeT / TIME_DURATION_MS;
@@ -1187,12 +1187,13 @@ export class World {
   // ---- HUD ---------------------------------------------------------------
 
   toast(message) {
+    if (!this.toastEl) return;
     this.toastEl.textContent = message;
     this.toastEl.classList.add("show");
     clearTimeout(this._toastTimer);
     this._toastTimer = setTimeout(() => this.toastEl.classList.remove("show"), 3600);
   }
-  setEventLabel(label) { this.eventLabel.textContent = label; }
+  setEventLabel(label) { if (this.eventLabel) this.eventLabel.textContent = label; }
   flagSeen(flag) { this.flags[flag] = true; this._persist(); }
   hasFlag(flag) { return !!this.flags[flag]; }
 
@@ -1266,12 +1267,14 @@ export class World {
   }
   closeInspector() {
     this.focus = null;
-    this.inspector.hidden = true;
+    if (this.inspector) this.inspector.hidden = true;
     document.querySelectorAll(".slot").forEach((s) => s.classList.remove("active"));
   }
 
   _refreshInspector() {
     if (!this.focus) return;
+    // V1 PRD layout has no inspector panel — codex replaces it. Bail if its DOM is missing.
+    if (!document.getElementById("insp-name")) return;
     const a = this.focus;
     const portraitEl = document.getElementById("insp-portrait");
     if (a.def.portrait) {

@@ -146,67 +146,10 @@ function dropPrizeEgg(charId) {
 
 // ---- Roster ---------------------------------------------------------------
 
-function buildRoster() {
-  const roster = document.getElementById("roster");
-  roster.innerHTML = "";
-  for (const c of CHARACTERS) {
-    if (c.secret && !solisRevealed) continue;
-    const slot = document.createElement("div");
-    slot.className = "slot locked";
-    slot.dataset.id = c.id;
-    slot.title = c.name + " — not yet hatched";
-    // Use the painterly portrait when available; falls back to a color swatch if
-    // the asset is missing or fails to load (e.g. while a new run is being generated).
-    if (c.portrait) {
-      const img = document.createElement("img");
-      img.className = "slot-portrait";
-      img.src = c.portrait;
-      img.alt = c.name;
-      img.onerror = () => {
-        img.remove();
-        const swatch = document.createElement("div");
-        swatch.className = "slot-swatch";
-        swatch.style.background = "#" + c.palette.body.toString(16).padStart(6, "0");
-        slot.insertBefore(swatch, slot.firstChild);
-      };
-      slot.appendChild(img);
-    } else {
-      const swatch = document.createElement("div");
-      swatch.className = "slot-swatch";
-      swatch.style.background = "#" + c.palette.body.toString(16).padStart(6, "0");
-      slot.appendChild(swatch);
-    }
-    const nm = document.createElement("div");
-    nm.className = "slot-name";
-    nm.textContent = c.name;
-    slot.appendChild(nm);
-    roster.appendChild(slot);
-  }
-}
+function buildRoster() { /* V1 PRD: no roster strip; codex replaces it */ }
 buildRoster();
 
-function refreshRosterFor(actor) {
-  const slot = document.querySelector(`.slot[data-id="${actor.id}"]`);
-  if (!slot) return;
-  slot.classList.remove("locked");
-  slot.title = actor.name + " — click to focus; pip fires " + actor.def.specialLabel;
-  slot.onclick = (ev) => {
-    ev.stopPropagation();
-    world.focusActor(actor);
-  };
-  // Pip button for quick special-fire.
-  if (!slot.querySelector(".pip")) {
-    const pip = document.createElement("span");
-    pip.className = "pip";
-    pip.textContent = "!";
-    pip.title = actor.def.specialLabel;
-    pip.onclick = (ev) => {
-      ev.stopPropagation();
-      if (!world.useSpecial(actor)) world.toast(actor.name + " is still gathering themselves…");
-    };
-    slot.appendChild(pip);
-  }
-}
+function refreshRosterFor(actor) { /* no-op in V1 PRD layout */ }
 
 // ---- Raycaster picking ----------------------------------------------------
 
@@ -334,7 +277,7 @@ function revealSolis() {
 
 // ---- Inspector close ------------------------------------------------------
 
-document.getElementById("inspector-close").onclick = () => world.closeInspector();
+// Inspector removed in V1 PRD layout; codex replaces it.
 
 // ---- Discovery codex ------------------------------------------------------
 
@@ -415,18 +358,9 @@ function populateCodex(charDef) {
 // ---- Welcome dismiss + splash --------------------------------------------
 
 const welcome = document.getElementById("welcome");
-const welcomeArt = document.getElementById("welcome-art");
-
-// Try to use the generated title image as the splash backdrop. Probe by loading
-// it; if it fails we keep the existing radial-gradient fallback baked into CSS.
-(function trySplash() {
-  const probe = new Image();
-  probe.onload = () => { welcomeArt.style.backgroundImage = `url('${probe.src}')`; };
-  probe.src = "docs/title.png";
-})();
 
 const dismiss = () => {
-  welcome.classList.add("hide");
+  welcome.hidden = true;
   // Welcome dismiss is the first user gesture — safe to bring up AudioContext now.
   audio.init();
 };
@@ -435,7 +369,7 @@ document.getElementById("welcome-go").onclick = dismiss;
 // Audio mute / unmute toggle in the HUD.
 const audioBtn = document.getElementById("audio-toggle");
 function updateAudioBtn() {
-  audioBtn.textContent = audio.muted ? "🔇" : "🔊";
+  audioBtn.textContent = audio.muted ? "SOUND: OFF" : "SOUND: ON";
   audioBtn.title = audio.muted ? "Unmute" : "Mute";
 }
 audioBtn.onclick = () => {
@@ -684,7 +618,6 @@ devpanel.addEventListener("click", (ev) => {
 });
 
 // Hide the controls hint after 9 seconds.
-setTimeout(() => document.getElementById("controls-hint").classList.add("fade"), 9000);
 
 // ---- Joy / hatched pill ---------------------------------------------------
 
@@ -694,57 +627,99 @@ function updateJoyPill() {
   document.getElementById("joy-label").textContent = hatched + " / " + total + " hatched";
 }
 
-// ---- Blue Chicken care HUD -----------------------------------------------
+// ---- Blue Chicken care HUD (V1 PRD layout) -------------------------------
+// Care UI is split across the V1 grid: bars live in the LEFT panel (#careNeeds),
+// action buttons in the BOTTOM action bar (#careActions). Topbar shows the
+// pet's name + vibe + age. Right panel shows world stats (hatched/next/time/event).
 
-const careHud = document.getElementById("care");
-const careVibe = document.getElementById("care-vibe");
-const careHint = document.getElementById("care-hint");
+const careNeedsPanel = document.getElementById("careNeeds");
+const careActionsPanel = document.getElementById("careActions");
+const petNameEl   = document.getElementById("petName");
+const petStageEl  = document.getElementById("petStage");
+const petAgeEl    = document.getElementById("petAge");
+const petVibeEl   = document.getElementById("petVibe");
+const coinCountEl = document.getElementById("coinCount");
+const statHatchedEl = document.getElementById("stat-hatched");
+const statNextEl    = document.getElementById("stat-next");
+const statTimeEl    = document.getElementById("stat-time");
+const statEventEl   = document.getElementById("stat-event");
+
 const careBars = {
-  hunger: document.getElementById("care-hunger"),
-  energy: document.getElementById("care-energy"),
-  happiness: document.getElementById("care-happiness"),
-  cleanliness: document.getElementById("care-cleanliness"),
-  sanity: document.getElementById("care-sanity"),
-  bond: document.getElementById("care-bond"),
+  hunger:      document.getElementById("bar-hunger"),
+  energy:      document.getElementById("bar-energy"),
+  happiness:   document.getElementById("bar-happiness"),
+  cleanliness: document.getElementById("bar-cleanliness"),
+  sanity:      document.getElementById("bar-sanity"),
+  bond:        document.getElementById("bar-bond"),
 };
 
-// Care HUD shows only after Blue is hatched. Re-checked every frame because
-// hatching can happen mid-session.
+// Format an age like "12s" / "3m" / "1h 4m" — V1 style.
+function fmtAge(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60);
+  return h + "h " + (m % 60) + "m";
+}
+
 function updateCareHUD() {
-  const blueAlive = !!world.actors.find((a) => a.id === BLUE.id);
-  if (!blueAlive) {
-    careHud.hidden = true;
-    return;
-  }
-  careHud.hidden = false;
-  const s = care.s;
-  careBars.hunger.style.width      = s.hunger + "%";
-  careBars.energy.style.width      = s.energy + "%";
-  careBars.happiness.style.width   = s.happiness + "%";
-  careBars.cleanliness.style.width = s.cleanliness + "%";
-  careBars.sanity.style.width      = s.sanity + "%";
-  careBars.bond.style.width        = s.bond + "%";
-  careVibe.textContent = care.vibe();
-  // Disable buttons that won't fire (sleeping disables feed/play; low energy
-  // disables play).
-  const btnByCare = (k) => document.querySelector(`.care-actions button[data-care="${k}"]`);
-  if (btnByCare("feed"))  btnByCare("feed").disabled  = s.isSleeping;
-  if (btnByCare("play"))  btnByCare("play").disabled  = s.isSleeping || s.energy < 10;
-  if (btnByCare("clean")) btnByCare("clean").disabled = false;
-  if (btnByCare("pet"))   btnByCare("pet").disabled   = false;
-  const sleepBtn = btnByCare("sleep");
-  if (sleepBtn) sleepBtn.textContent = s.isSleeping ? "☼ Wake" : "☾ Sleep";
-  // Next prize hint
-  const nextPrize = PRIZE_THRESHOLDS.find((t) => !care.s.unlocked[t.id]);
-  if (nextPrize) {
-    careHint.textContent = `Next prize at bond ${nextPrize.bond} (${Math.floor(s.bond)}/${nextPrize.bond})`;
+  const blue = world.actors.find((a) => a.id === BLUE.id);
+  if (!blue) {
+    // Pre-hatch: show "egg" stage, no needs panel / action bar.
+    careNeedsPanel.hidden = true;
+    careActionsPanel.hidden = true;
+    petStageEl.textContent = "egg";
+    petAgeEl.textContent = "0s";
+    petVibeEl.textContent = world.eggs[BLUE.id] ? "Tap her egg six times." : "She's somewhere out here…";
   } else {
-    careHint.textContent = "All prize hatchlings unlocked.";
+    careNeedsPanel.hidden = false;
+    careActionsPanel.hidden = false;
+    const s = care.s;
+    careBars.hunger.style.width      = s.hunger + "%";
+    careBars.energy.style.width      = s.energy + "%";
+    careBars.happiness.style.width   = s.happiness + "%";
+    careBars.cleanliness.style.width = s.cleanliness + "%";
+    careBars.sanity.style.width      = s.sanity + "%";
+    careBars.bond.style.width        = s.bond + "%";
+    petVibeEl.textContent = care.vibe();
+    // Age since Blue was hatched (her actor's born timestamp).
+    petAgeEl.textContent = fmtAge(performance.now() - blue.born);
+    // Stage: chick → teen → adult based on age (matches V1's life-stage idea).
+    const aSec = (performance.now() - blue.born) / 1000;
+    petStageEl.textContent = aSec < 60 ? "chick" : aSec < 600 ? "teen" : "adult";
+    // Disable invalid actions (sleeping = no feed/play; low energy = no play).
+    const btn = (k) => document.querySelector(`.action[data-care="${k}"]`);
+    if (btn("feed"))  btn("feed").disabled  = s.isSleeping;
+    if (btn("play"))  btn("play").disabled  = s.isSleeping || s.energy < 10;
+    const sleepBtn = btn("sleep");
+    if (sleepBtn) {
+      const glyph = sleepBtn.querySelector(".action-glyph");
+      const name  = sleepBtn.querySelector(".action-name");
+      if (glyph) glyph.textContent = s.isSleeping ? "☼" : "☾";
+      if (name)  name.textContent  = s.isSleeping ? "WAKE" : "SLEEP";
+    }
   }
+
+  // Right panel: world stats — always populated.
+  const total = CHARACTERS.length;
+  const hatched = world.actors.length;
+  coinCountEl.textContent = hatched + " / " + total;
+  statHatchedEl.textContent = hatched + " / " + total;
+  const nextPrize = PRIZE_THRESHOLDS.find((t) => !care.s.unlocked[t.id]);
+  statNextEl.textContent = nextPrize
+    ? `${Math.floor(care.s.bond)}/${nextPrize.bond}`
+    : (blue ? "ALL UNLOCKED" : "—");
+  statTimeEl.textContent = (world.timeName && world.timeName().toUpperCase()) || "—";
+  // Event label updated by EventDirector via world.setEventLabel — we mirror
+  // it from #event-label OR from world.events.active.
+  statEventEl.textContent = (world.events && world.events.active && world.events.active.label)
+    ? world.events.active.label.toUpperCase()
+    : "QUIET";
 }
 
 // Wire the 5 care buttons. Each invokes Care + plays a soft audio cue.
-document.querySelectorAll(".care-actions button").forEach((btn) => {
+document.querySelectorAll(".action[data-care]").forEach((btn) => {
   btn.onclick = () => {
     const k = btn.dataset.care;
     let fired = false;

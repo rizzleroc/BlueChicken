@@ -1,206 +1,257 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <title>BlueChicken · The Hatchling World</title>
-    <link rel="stylesheet" href="styles.css" />
-    <!-- three.js + addons vendored locally under ./vendor/ so we don't depend
-         on a CDN at runtime (avoids CORS / network-policy / SLA risk). The
-         importmap maps the bare "three" specifier and the "three/addons/"
-         prefix to local paths; the addon files themselves use `import {...}
-         from 'three'` and resolve through the same map. -->
-    <script type="importmap">
-    {
-      "imports": {
-        "three":          "./vendor/three.module.js",
-        "three/addons/":  "./vendor/"
-      }
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0710" />
+  <title>The Hatchling World — care for Blue, unlock a valley</title>
+  <meta name="description" content="Care for Blue Chicken. As your bond grows, prize hatchlings arrive — each from a different soul." />
+
+  <!-- V1 typography (Cluckbot PRD). Falls back to system fonts if CDN blocked. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three":          "./vendor/three.module.js",
+      "three/addons/":  "./vendor/"
     }
-    </script>
-  </head>
-  <body>
-    <main id="stage" aria-label="A living 3D world where hatchlings roam and events visit">
-      <canvas id="webgl"></canvas>
+  }
+  </script>
+</head>
+<body>
 
-      <!-- Top status bar: time, weather, current event, hatched count. -->
-      <header id="hud-top" role="status" aria-live="polite">
-        <div class="hud-pill" id="time-pill"><span class="hud-icon" id="time-icon">☀</span><span id="time-label">Day</span></div>
-        <div class="hud-pill" id="weather-pill"><span class="hud-icon" id="weather-icon">·</span><span id="weather-label">Clear</span></div>
-        <div class="hud-pill" id="event-pill"><span class="hud-icon">⚑</span><span id="event-label">All quiet</span></div>
-        <div class="hud-pill" id="joy-pill"><span class="hud-icon">♡</span><span id="joy-label">0 / 9 hatched</span></div>
-        <button class="hud-pill hud-button" id="shop-toggle" type="button" aria-label="Open shop">⚡ Shop</button>
-        <button class="hud-pill hud-button" id="codex-toggle" type="button" aria-label="Open codex">📖 Codex</button>
-        <button class="hud-pill hud-button" id="audio-toggle" type="button" aria-label="Toggle audio">🔇</button>
-        <button class="hud-pill hud-button" id="dev-toggle" type="button" aria-label="Toggle dev panel" hidden>⚙ Dev</button>
-      </header>
+  <!-- Subtle film grain over everything, V1-style. -->
+  <div id="grain" aria-hidden="true"></div>
 
-      <!-- Roster strip along the bottom. -->
-      <footer id="roster" aria-label="Your hatchlings"></footer>
+  <!-- The 3D scene sits behind the HUD chrome. Same canvas id main3d.js binds to. -->
+  <canvas id="webgl" aria-hidden="true"></canvas>
 
-      <!-- Blue Chicken's care HUD. Surfaces only after Blue is hatched.
-           Five stat bars + bond + vibe + five verb buttons, all backed by
-           care.js (chicken-game pet.js formulas). -->
-      <aside id="care" class="care-hud" aria-label="Care for Blue" hidden>
-        <header class="care-header">
-          <h3>Blue</h3>
-          <span class="care-vibe" id="care-vibe">Blue is fine.</span>
-        </header>
-        <div class="care-bars">
-          <div class="care-stat"><span class="k">Hunger</span><div class="bar"><i id="care-hunger"></i></div></div>
-          <div class="care-stat"><span class="k">Energy</span><div class="bar"><i id="care-energy"></i></div></div>
-          <div class="care-stat"><span class="k">Joy</span><div class="bar"><i id="care-happiness"></i></div></div>
-          <div class="care-stat"><span class="k">Clean</span><div class="bar"><i id="care-cleanliness"></i></div></div>
-          <div class="care-stat"><span class="k">Calm</span><div class="bar"><i id="care-sanity"></i></div></div>
-          <div class="care-stat bond"><span class="k">Bond</span><div class="bar"><i id="care-bond"></i></div></div>
-        </div>
-        <div class="care-actions">
-          <button data-care="feed">🌾 Feed</button>
-          <button data-care="play">🎏 Play</button>
-          <button data-care="pet">♡ Pet</button>
-          <button data-care="clean">≈ Clean</button>
-          <button data-care="sleep">☾ Sleep</button>
-        </div>
-        <p class="care-hint" id="care-hint">Care for Blue. As your bond grows, prize hatchlings will arrive.</p>
-      </aside>
+  <!-- =================== WELCOME / NAMING (V1 style) =================== -->
+  <div id="welcome" class="modal" aria-modal="false">
+    <div class="modal-card">
+      <p class="kicker">the hatchling world · 2026</p>
+      <h1>You have been given<br/>an <em>egg.</em></h1>
+      <p class="lede">A small blue chicken sleeps inside. Care for her well — the valley will follow.</p>
+      <button id="welcome-go" class="cta" type="button">
+        <span class="cta-label">Begin
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+      </button>
+      <p class="modal-hint">tap her egg six times to hatch · drag the world to look around</p>
+    </div>
+  </div>
 
-      <!-- Inspector panel. -->
-      <aside id="inspector" hidden aria-live="polite">
-        <button class="close" id="inspector-close" aria-label="Close">×</button>
-        <img id="insp-portrait" class="portrait" alt="" hidden />
-        <h2 id="insp-name"></h2>
-        <p class="role" id="insp-role"></p>
-        <p class="story" id="insp-story"></p>
-        <div class="stats">
-          <div><span class="k">Mood</span><span class="v" id="insp-mood"></span></div>
-          <div><span class="k">Joy</span><div class="bar"><div id="insp-joy"></div></div></div>
-        </div>
-        <button class="special" id="insp-special"></button>
-        <ul class="discoveries" id="insp-discoveries"></ul>
-      </aside>
+  <!-- =================== MAIN STAGE =================== -->
+  <main id="stage" class="stage">
 
-      <div id="toast" role="status" aria-live="polite"></div>
-
-      <!-- Camera/interaction hints — fades after a few seconds. -->
-      <div id="controls-hint">
-        <span>Drag · look around</span>
-        <span>Scroll · zoom</span>
-        <span>Tap an egg · hatch</span>
-        <span>Tap a hatchling · pet</span>
+    <!-- Topbar: BLUE / age / vibe / coins / quick buttons. -->
+    <header class="topbar">
+      <div class="top-left">
+        <h2 class="pet-name" id="petName">BLUE</h2>
+        <span class="pet-meta">
+          <span class="pet-stage" id="petStage">egg</span>
+          <span class="pet-age"   id="petAge">0s</span>
+        </span>
       </div>
+      <div class="top-center">
+        <span class="vibe" id="petVibe">Tap her egg six times.</span>
+      </div>
+      <div class="top-right">
+        <span class="coin-balance" id="coinBalance" aria-label="Hatched count">
+          <span class="coin-icon" aria-hidden="true">◎</span>
+          <b id="coinCount">0 / 10</b>
+        </span>
+        <button id="codex-toggle" class="ghost" type="button">CODEX</button>
+        <button id="shop-toggle"  class="ghost" type="button">STORE</button>
+        <button id="audio-toggle" class="ghost" type="button">SOUND: OFF</button>
+        <button id="dev-toggle"   class="ghost" type="button" hidden>DEV</button>
+      </div>
+    </header>
 
-      <section id="welcome" role="dialog" aria-modal="false">
-        <div class="welcome-art" id="welcome-art"></div>
-        <div class="welcome-inner">
-          <h1 class="title">The Hatchling World</h1>
-          <p class="tagline">A small valley · nine eggs · nine very different souls</p>
-          <p>Tap each six times to hatch it. Every soul inside is different, and the world remembers each one.</p>
-          <p>Wolves wander in. UFOs drop by. Winter rolls through and igloos rise from the snow. The world doesn't stop happening to you.</p>
-          <p class="hint">Drag to look around · Scroll to zoom · Tap an egg six times to hatch</p>
-          <button id="welcome-go">Begin</button>
+    <!-- Needs panel: 5 stat bars + bond. Surfaces from Blue's care.js. -->
+    <aside class="needs" id="careNeeds" aria-label="Blue's needs" hidden>
+      <div class="need" data-key="hunger">
+        <span class="need-icon" aria-hidden="true">⌬</span>
+        <span class="need-label">HUNGER</span>
+        <div class="need-bar"><i id="bar-hunger"></i></div>
+      </div>
+      <div class="need" data-key="energy">
+        <span class="need-icon" aria-hidden="true">◔</span>
+        <span class="need-label">ENERGY</span>
+        <div class="need-bar"><i id="bar-energy"></i></div>
+      </div>
+      <div class="need" data-key="happiness">
+        <span class="need-icon" aria-hidden="true">✿</span>
+        <span class="need-label">HAPPY</span>
+        <div class="need-bar"><i id="bar-happiness"></i></div>
+      </div>
+      <div class="need" data-key="cleanliness">
+        <span class="need-icon" aria-hidden="true">≈</span>
+        <span class="need-label">CLEAN</span>
+        <div class="need-bar"><i id="bar-cleanliness"></i></div>
+      </div>
+      <div class="need critical" data-key="sanity">
+        <span class="need-icon" aria-hidden="true">◉</span>
+        <span class="need-label">CALM</span>
+        <div class="need-bar"><i id="bar-sanity"></i></div>
+      </div>
+      <div class="need bond" data-key="bond">
+        <span class="need-icon" aria-hidden="true">♡</span>
+        <span class="need-label">BOND</span>
+        <div class="need-bar"><i id="bar-bond"></i></div>
+      </div>
+    </aside>
+
+    <!-- Right: world stats (BOND / HATCHED / NEXT PRIZE / EVENT). -->
+    <aside class="stats" aria-label="World stats">
+      <div class="stat"><span class="stat-label">HATCHED</span><span class="stat-value" id="stat-hatched">0 / 10</span></div>
+      <div class="stat"><span class="stat-label">NEXT</span><span class="stat-value" id="stat-next">—</span></div>
+      <div class="stat"><span class="stat-label">TIME</span><span class="stat-value" id="stat-time">DAY</span></div>
+      <div class="stat"><span class="stat-label">EVENT</span><span class="stat-value" id="stat-event">QUIET</span></div>
+    </aside>
+
+    <!-- Habitat — the 3D world is rendered to the webgl canvas behind. This
+         div is the click hit target and floats over the canvas for raycasting. -->
+    <div class="habitat" id="habitat" aria-label="The Hatchling Valley"></div>
+
+    <!-- Action bar: FEED / PLAY / PET / CLEAN / SLEEP (matches V1 verbatim). -->
+    <footer class="actions" id="careActions" hidden>
+      <button class="action" data-care="feed">
+        <span class="action-glyph">🌾</span>
+        <span class="action-name">FEED</span>
+      </button>
+      <button class="action" data-care="play">
+        <span class="action-glyph">⚐</span>
+        <span class="action-name">PLAY</span>
+      </button>
+      <button class="action" data-care="pet">
+        <span class="action-glyph">♡</span>
+        <span class="action-name">PET</span>
+      </button>
+      <button class="action" data-care="clean">
+        <span class="action-glyph">⌫</span>
+        <span class="action-name">CLEAN</span>
+      </button>
+      <button class="action" data-care="sleep">
+        <span class="action-glyph">☾</span>
+        <span class="action-name">SLEEP</span>
+      </button>
+    </footer>
+
+    <div class="float-msg" id="floatMsg" aria-live="polite"></div>
+  </main>
+
+  <!-- =================== HATCH REVEAL MODAL (V1-style card) =================== -->
+  <div id="reveal" class="modal" hidden aria-modal="true">
+    <div class="modal-card reveal-card">
+      <p class="kicker">it hatched</p>
+      <img id="reveal-portrait" class="reveal-portrait" alt="" />
+      <h1 id="reveal-name">Blue</h1>
+      <p class="variant-tag" id="reveal-role">Hatchling Keeper</p>
+      <p class="lede" id="reveal-story"></p>
+      <button id="reveal-go" class="cta" type="button">
+        <span class="cta-label">Continue</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- =================== CODEX MODAL =================== -->
+  <div id="codex" class="modal" hidden aria-modal="true">
+    <div class="modal-card codex-card">
+      <header class="shop-head">
+        <div>
+          <p class="kicker">field journal</p>
+          <h2 id="codex-name">Blue</h2>
         </div>
-      </section>
-
-      <!-- Discovery codex — full-screen open book showing every hatched soul.
-           Populated by main3d.js from the world's actors + discoveries. -->
-      <section id="codex" hidden aria-modal="true">
-        <button class="close" id="codex-close" aria-label="Close codex">×</button>
-        <div class="book">
-          <div class="book-page left" id="codex-left">
-            <div class="page-corner tl"></div><div class="page-corner tr"></div>
-            <div class="page-corner bl"></div><div class="page-corner br"></div>
-            <img id="codex-portrait" class="codex-portrait" alt="" />
-            <h2 id="codex-name"></h2>
-            <p class="codex-role" id="codex-role"></p>
-            <p class="codex-story" id="codex-story"></p>
-          </div>
-          <div class="book-spine"></div>
-          <div class="book-page right" id="codex-right">
-            <div class="page-corner tl"></div><div class="page-corner tr"></div>
-            <div class="page-corner bl"></div><div class="page-corner br"></div>
-            <h3>Discoveries</h3>
-            <ol id="codex-discoveries" class="codex-discoveries"></ol>
-            <div class="codex-thumbs" id="codex-thumbs"></div>
-          </div>
+        <button id="codex-close" class="ghost" type="button">CLOSE</button>
+      </header>
+      <div class="codex-body">
+        <div class="codex-left">
+          <img id="codex-portrait" class="codex-portrait" alt="" />
+          <p class="variant-tag" id="codex-role"></p>
+          <p class="lede" id="codex-story"></p>
         </div>
-      </section>
-
-      <!-- Accelerator shop — opens from the ⚡ HUD button. Items are defined in
-           payments.js; the list is rendered by main3d.js. -->
-      <section id="shop" hidden aria-modal="true">
-        <div class="shop-card">
-          <button class="close" id="shop-close" aria-label="Close shop">×</button>
-          <h2>Tend the Valley Faster</h2>
-          <p class="shop-blurb">Tiny boosts for the impatient gardener.<br><span class="shop-stripe-note">Powered by Stripe. All purchases support the keeper of the world.</span></p>
-          <div class="shop-grid" id="shop-grid"></div>
+        <div class="codex-right">
+          <p class="shop-category-name">DISCOVERIES</p>
+          <ol id="codex-discoveries" class="codex-discoveries"></ol>
+          <p class="shop-category-name" style="margin-top:18px">SOULS</p>
+          <div id="codex-thumbs" class="codex-thumbs"></div>
         </div>
-      </section>
+      </div>
+    </div>
+  </div>
 
-      <!-- Mock-payment confirmation. Shown when no real Stripe link is configured;
-           pretends to charge and grants the items so the flow works in demos. -->
-      <section id="paystub" hidden aria-modal="true">
-        <div class="shop-card paystub-card">
-          <button class="close" id="paystub-close" aria-label="Cancel">×</button>
-          <h2 id="paystub-title">Confirm Purchase</h2>
-          <p id="paystub-body"></p>
-          <div class="paystub-buttons">
-            <button id="paystub-cancel" class="paystub-cancel">Cancel</button>
-            <button id="paystub-confirm" class="paystub-confirm">Pretend-Pay $<span id="paystub-amount">0.00</span></button>
-          </div>
-          <p class="shop-stripe-note">No real card charged — Stripe Payment Link not configured. Plug one in via <code>window.STRIPE_LINKS</code> and this dialog is skipped.</p>
+  <!-- =================== SHOP MODAL =================== -->
+  <div id="shop" class="modal" hidden aria-modal="true">
+    <div class="modal-card shop-card">
+      <header class="shop-head">
+        <div>
+          <p class="kicker">accelerator store</p>
+          <h2>Tend the valley faster</h2>
         </div>
-      </section>
+        <button id="shop-close" class="ghost" type="button">CLOSE</button>
+      </header>
+      <div id="shop-grid" class="shop-grid"></div>
+      <p class="modal-hint" style="margin-top: 18px;">Stripe Payment Links not configured — purchases stub a pretend-pay dialog and grant items client-side.</p>
+    </div>
+  </div>
 
-      <!-- Tester / dev panel. Hidden unless `?dev=1` is in the URL or you press
-           the backtick key. Free accelerators, instant hatching, time skips,
-           event triggers, save reset. -->
-      <aside id="devpanel" hidden>
-        <header><strong>Dev Panel</strong><button id="devpanel-close" aria-label="Close">×</button></header>
-        <section>
-          <h4>Time</h4>
-          <button data-dev="skipphase">Skip one phase</button>
-          <button data-dev="cycle">Cycle to night</button>
-          <button data-dev="fasttime">Toggle 10× time</button>
-        </section>
-        <section>
-          <h4>Eggs / Joy</h4>
-          <button data-dev="hatchone">Hatch one egg</button>
-          <button data-dev="hatchall">Hatch all eggs</button>
-          <button data-dev="joyall">Joy +1 all</button>
-          <button data-dev="solis">Summon Solis</button>
-        </section>
-        <section>
-          <h4>Events</h4>
-          <button data-event="ufo">UFO</button>
-          <button data-event="wolf">Wolf</button>
-          <button data-event="winter">Winter</button>
-          <button data-event="auroraBorealis">Aurora</button>
-          <button data-event="meteor">Meteors</button>
-          <button data-event="eclipse">Eclipse</button>
-        </section>
-        <section>
-          <h4>Shop</h4>
-          <button data-dev="freeacc">+5 of each accelerator</button>
-          <button data-dev="opacc">Open shop</button>
-        </section>
-        <section>
-          <h4>Save</h4>
-          <button data-dev="reset">Reset save (reload)</button>
-        </section>
-      </aside>
+  <!-- =================== STRIPE STUB (pretend pay) =================== -->
+  <div id="paystub" class="modal" hidden aria-modal="true">
+    <div class="modal-card paystub-card">
+      <p class="kicker" id="paystub-title">Confirm purchase</p>
+      <p class="lede" id="paystub-body"></p>
+      <div class="paystub-buttons">
+        <button id="paystub-cancel" class="ghost" type="button">CANCEL</button>
+        <button id="paystub-confirm" class="cta" type="button">
+          <span class="cta-label">Pretend-Pay $<span id="paystub-amount">0.00</span></span>
+        </button>
+      </div>
+    </div>
+  </div>
 
-      <!-- Hatch reveal — full-screen celebration when a new character hatches. -->
-      <section id="reveal" hidden aria-live="polite">
-        <div class="reveal-card">
-          <img id="reveal-portrait" class="portrait" alt="" />
-          <h2 id="reveal-name"></h2>
-          <p class="role" id="reveal-role"></p>
-          <p class="story" id="reveal-story"></p>
-          <button id="reveal-go">Continue</button>
-        </div>
-      </section>
-    </main>
+  <!-- =================== DEV PANEL =================== -->
+  <aside id="devpanel" hidden>
+    <header><strong>Dev</strong><button id="devpanel-close" aria-label="Close">×</button></header>
+    <section>
+      <h4>Time</h4>
+      <button data-dev="skipphase">Skip phase</button>
+      <button data-dev="cycle">→ Night</button>
+      <button data-dev="fasttime">10× time</button>
+    </section>
+    <section>
+      <h4>Care</h4>
+      <button data-dev="hatchblue">Hatch Blue</button>
+      <button data-dev="bondmax">Bond = 100</button>
+      <button data-dev="joyall">Joy +1 all</button>
+      <button data-dev="solis">Summon Solis</button>
+    </section>
+    <section>
+      <h4>Events</h4>
+      <button data-event="ufo">UFO</button>
+      <button data-event="wolf">Wolf</button>
+      <button data-event="winter">Winter</button>
+      <button data-event="auroraBorealis">Aurora</button>
+      <button data-event="meteor">Meteors</button>
+      <button data-event="eclipse">Eclipse</button>
+    </section>
+    <section>
+      <h4>Shop</h4>
+      <button data-dev="freeacc">+5 each</button>
+      <button data-dev="opacc">Open</button>
+    </section>
+    <section>
+      <h4>Save</h4>
+      <button data-dev="reset">Reset (reload)</button>
+    </section>
+  </aside>
 
-    <script type="module" src="main3d.js"></script>
-  </body>
+  <script type="module" src="main3d.js"></script>
+</body>
 </html>
