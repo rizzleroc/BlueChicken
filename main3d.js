@@ -477,11 +477,13 @@ function initiatePurchase(item) {
   paystubAmount.textContent = item.priceUsd.toFixed(2);
   paystub.hidden = false;
 }
-document.getElementById("paystub-close").onclick =
-document.getElementById("paystub-cancel").onclick = () => {
-  paystub.hidden = true;
-  pendingPurchase = null;
-};
+// V1 PRD modals use a CANCEL ghost button instead of a × close icon, so the
+// old #paystub-close ID may not exist in HTML — guard both bindings.
+const _paystubDismiss = () => { paystub.hidden = true; pendingPurchase = null; };
+const _paystubClose = document.getElementById("paystub-close");
+const _paystubCancel = document.getElementById("paystub-cancel");
+if (_paystubClose)  _paystubClose.onclick  = _paystubDismiss;
+if (_paystubCancel) _paystubCancel.onclick = _paystubDismiss;
 paystub.addEventListener("click", (ev) => {
   if (ev.target === paystub) { paystub.hidden = true; pendingPurchase = null; }
 });
@@ -622,9 +624,9 @@ devpanel.addEventListener("click", (ev) => {
 // ---- Joy / hatched pill ---------------------------------------------------
 
 function updateJoyPill() {
-  const total = CHARACTERS.length;
-  const hatched = world.actors.length;
-  document.getElementById("joy-label").textContent = hatched + " / " + total + " hatched";
+  // V1 PRD: #joy-label is gone — coin balance + #stat-hatched now show the
+  // count, populated by updateCareHUD each frame. Kept as a no-op so callers
+  // outside this file (none today) don't break.
 }
 
 // ---- Blue Chicken care HUD (V1 PRD layout) -------------------------------

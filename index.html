@@ -120,8 +120,11 @@
          div is the click hit target and floats over the canvas for raycasting. -->
     <div class="habitat" id="habitat" aria-label="The Hatchling Valley"></div>
 
-    <!-- Action bar: FEED / PLAY / PET / CLEAN / SLEEP (matches V1 verbatim). -->
-    <footer class="actions" id="careActions" hidden>
+    <!-- Action bar: FEED / PLAY / PET / CLEAN / SLEEP (matches V1 verbatim).
+         Carries the .care-actions alias too so playtest selectors targeting
+         either `.action[data-care=...]` or `.care-actions button[data-care=...]`
+         both work. -->
+    <footer class="actions care-actions" id="careActions" hidden>
       <button class="action" data-care="feed">
         <span class="action-glyph">🌾</span>
         <span class="action-name">FEED</span>
