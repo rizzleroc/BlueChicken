@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>BlueChicken · The Hatchling World</title>
+    <link rel="stylesheet" href="styles.css" />
+    <!-- three.js + addons via importmap. Loaded from a CDN, no build step required.
+         If you're offline, swap the URLs for a local copy of the same files. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three":          "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/":  "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+    </script>
+  </head>
+  <body>
+    <main id="stage" aria-label="A living 3D world where hatchlings roam and events visit">
+      <canvas id="webgl"></canvas>
+
+      <!-- Top status bar: time, weather, current event, hatched count. -->
+      <header id="hud-top" role="status" aria-live="polite">
+        <div class="hud-pill" id="time-pill"><span class="hud-icon" id="time-icon">☀</span><span id="time-label">Day</span></div>
+        <div class="hud-pill" id="weather-pill"><span class="hud-icon" id="weather-icon">·</span><span id="weather-label">Clear</span></div>
+        <div class="hud-pill" id="event-pill"><span class="hud-icon">⚑</span><span id="event-label">All quiet</span></div>
+        <div class="hud-pill" id="joy-pill"><span class="hud-icon">♡</span><span id="joy-label">0 / 9 hatched</span></div>
+        <button class="hud-pill hud-button" id="shop-toggle" type="button" aria-label="Open shop">⚡ Shop</button>
+        <button class="hud-pill hud-button" id="codex-toggle" type="button" aria-label="Open codex">📖 Codex</button>
+        <button class="hud-pill hud-button" id="audio-toggle" type="button" aria-label="Toggle audio">🔇</button>
+        <button class="hud-pill hud-button" id="dev-toggle" type="button" aria-label="Toggle dev panel" hidden>⚙ Dev</button>
+      </header>
+
+      <!-- Roster strip along the bottom. -->
+      <footer id="roster" aria-label="Your hatchlings"></footer>
+
+      <!-- Inspector panel. -->
+      <aside id="inspector" hidden aria-live="polite">
+        <button class="close" id="inspector-close" aria-label="Close">×</button>
+        <img id="insp-portrait" class="portrait" alt="" hidden />
+        <h2 id="insp-name"></h2>
+        <p class="role" id="insp-role"></p>
+        <p class="story" id="insp-story"></p>
+        <div class="stats">
+          <div><span class="k">Mood</span><span class="v" id="insp-mood"></span></div>
+          <div><span class="k">Joy</span><div class="bar"><div id="insp-joy"></div></div></div>
+        </div>
+        <button class="special" id="insp-special"></button>
+        <ul class="discoveries" id="insp-discoveries"></ul>
+      </aside>
+
+      <div id="toast" role="status" aria-live="polite"></div>
+
+      <!-- Camera/interaction hints — fades after a few seconds. -->
+      <div id="controls-hint">
+        <span>Drag · look around</span>
+        <span>Scroll · zoom</span>
+        <span>Tap an egg · hatch</span>
+        <span>Tap a hatchling · pet</span>
+      </div>
+
+      <section id="welcome" role="dialog" aria-modal="false">
+        <div class="welcome-art" id="welcome-art"></div>
+        <div class="welcome-inner">
+          <h1 class="title">The Hatchling World</h1>
+          <p class="tagline">A small valley · nine eggs · nine very different souls</p>
+          <p>Tap each six times to hatch it. Every soul inside is different, and the world remembers each one.</p>
+          <p>Wolves wander in. UFOs drop by. Winter rolls through and igloos rise from the snow. The world doesn't stop happening to you.</p>
+          <p class="hint">Drag to look around · Scroll to zoom · Tap an egg six times to hatch</p>
+          <button id="welcome-go">Begin</button>
+        </div>
+      </section>
+
+      <!-- Discovery codex — full-screen open book showing every hatched soul.
+           Populated by main3d.js from the world's actors + discoveries. -->
+      <section id="codex" hidden aria-modal="true">
+        <button class="close" id="codex-close" aria-label="Close codex">×</button>
+        <div class="book">
+          <div class="book-page left" id="codex-left">
+            <div class="page-corner tl"></div><div class="page-corner tr"></div>
+            <div class="page-corner bl"></div><div class="page-corner br"></div>
+            <img id="codex-portrait" class="codex-portrait" alt="" />
+            <h2 id="codex-name"></h2>
+            <p class="codex-role" id="codex-role"></p>
+            <p class="codex-story" id="codex-story"></p>
+          </div>
+          <div class="book-spine"></div>
+          <div class="book-page right" id="codex-right">
+            <div class="page-corner tl"></div><div class="page-corner tr"></div>
+            <div class="page-corner bl"></div><div class="page-corner br"></div>
+            <h3>Discoveries</h3>
+            <ol id="codex-discoveries" class="codex-discoveries"></ol>
+            <div class="codex-thumbs" id="codex-thumbs"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Accelerator shop — opens from the ⚡ HUD button. Items are defined in
+           payments.js; the list is rendered by main3d.js. -->
+      <section id="shop" hidden aria-modal="true">
+        <div class="shop-card">
+          <button class="close" id="shop-close" aria-label="Close shop">×</button>
+          <h2>Tend the Valley Faster</h2>
+          <p class="shop-blurb">Tiny boosts for the impatient gardener.<br><span class="shop-stripe-note">Powered by Stripe. All purchases support the keeper of the world.</span></p>
+          <div class="shop-grid" id="shop-grid"></div>
+        </div>
+      </section>
+
+      <!-- Mock-payment confirmation. Shown when no real Stripe link is configured;
+           pretends to charge and grants the items so the flow works in demos. -->
+      <section id="paystub" hidden aria-modal="true">
+        <div class="shop-card paystub-card">
+          <button class="close" id="paystub-close" aria-label="Cancel">×</button>
+          <h2 id="paystub-title">Confirm Purchase</h2>
+          <p id="paystub-body"></p>
+          <div class="paystub-buttons">
+            <button id="paystub-cancel" class="paystub-cancel">Cancel</button>
+            <button id="paystub-confirm" class="paystub-confirm">Pretend-Pay $<span id="paystub-amount">0.00</span></button>
+          </div>
+          <p class="shop-stripe-note">No real card charged — Stripe Payment Link not configured. Plug one in via <code>window.STRIPE_LINKS</code> and this dialog is skipped.</p>
+        </div>
+      </section>
+
+      <!-- Tester / dev panel. Hidden unless `?dev=1` is in the URL or you press
+           the backtick key. Free accelerators, instant hatching, time skips,
+           event triggers, save reset. -->
+      <aside id="devpanel" hidden>
+        <header><strong>Dev Panel</strong><button id="devpanel-close" aria-label="Close">×</button></header>
+        <section>
+          <h4>Time</h4>
+          <button data-dev="skipphase">Skip one phase</button>
+          <button data-dev="cycle">Cycle to night</button>
+          <button data-dev="fasttime">Toggle 10× time</button>
+        </section>
+        <section>
+          <h4>Eggs / Joy</h4>
+          <button data-dev="hatchone">Hatch one egg</button>
+          <button data-dev="hatchall">Hatch all eggs</button>
+          <button data-dev="joyall">Joy +1 all</button>
+          <button data-dev="solis">Summon Solis</button>
+        </section>
+        <section>
+          <h4>Events</h4>
+          <button data-event="ufo">UFO</button>
+          <button data-event="wolf">Wolf</button>
+          <button data-event="winter">Winter</button>
+          <button data-event="auroraBorealis">Aurora</button>
+          <button data-event="meteor">Meteors</button>
+          <button data-event="eclipse">Eclipse</button>
+        </section>
+        <section>
+          <h4>Shop</h4>
+          <button data-dev="freeacc">+5 of each accelerator</button>
+          <button data-dev="opacc">Open shop</button>
+        </section>
+        <section>
+          <h4>Save</h4>
+          <button data-dev="reset">Reset save (reload)</button>
+        </section>
+      </aside>
+
+      <!-- Hatch reveal — full-screen celebration when a new character hatches. -->
+      <section id="reveal" hidden aria-live="polite">
+        <div class="reveal-card">
+          <img id="reveal-portrait" class="portrait" alt="" />
+          <h2 id="reveal-name"></h2>
+          <p class="role" id="reveal-role"></p>
+          <p class="story" id="reveal-story"></p>
+          <button id="reveal-go">Continue</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="main3d.js"></script>
+  </body>
+</html>
