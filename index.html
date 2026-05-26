@@ -38,6 +38,32 @@
       <!-- Roster strip along the bottom. -->
       <footer id="roster" aria-label="Your hatchlings"></footer>
 
+      <!-- Blue Chicken's care HUD. Surfaces only after Blue is hatched.
+           Five stat bars + bond + vibe + five verb buttons, all backed by
+           care.js (chicken-game pet.js formulas). -->
+      <aside id="care" class="care-hud" aria-label="Care for Blue" hidden>
+        <header class="care-header">
+          <h3>Blue</h3>
+          <span class="care-vibe" id="care-vibe">Blue is fine.</span>
+        </header>
+        <div class="care-bars">
+          <div class="care-stat"><span class="k">Hunger</span><div class="bar"><i id="care-hunger"></i></div></div>
+          <div class="care-stat"><span class="k">Energy</span><div class="bar"><i id="care-energy"></i></div></div>
+          <div class="care-stat"><span class="k">Joy</span><div class="bar"><i id="care-happiness"></i></div></div>
+          <div class="care-stat"><span class="k">Clean</span><div class="bar"><i id="care-cleanliness"></i></div></div>
+          <div class="care-stat"><span class="k">Calm</span><div class="bar"><i id="care-sanity"></i></div></div>
+          <div class="care-stat bond"><span class="k">Bond</span><div class="bar"><i id="care-bond"></i></div></div>
+        </div>
+        <div class="care-actions">
+          <button data-care="feed">🌾 Feed</button>
+          <button data-care="play">🎏 Play</button>
+          <button data-care="pet">♡ Pet</button>
+          <button data-care="clean">≈ Clean</button>
+          <button data-care="sleep">☾ Sleep</button>
+        </div>
+        <p class="care-hint" id="care-hint">Care for Blue. As your bond grows, prize hatchlings will arrive.</p>
+      </aside>
+
       <!-- Inspector panel. -->
       <aside id="inspector" hidden aria-live="polite">
         <button class="close" id="inspector-close" aria-label="Close">×</button>

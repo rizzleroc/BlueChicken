@@ -70,6 +70,87 @@ function eggBase(colorHex, decorate = (g) => {}) {
   return group;
 }
 
+// ----- 0. BLUE CHICKEN — gateway hatchling (always first) -------------------
+
+// Blue is the only character that gets an egg at boot. The other nine are
+// "prize animals" unlocked progressively by caring for her (see care.js +
+// PRIZE_THRESHOLDS). She's the BlueChicken repo's mascot finally in the game.
+const bluechicken = {
+  id: "bluechicken",
+  portrait: "docs/portraits/bluechicken.png",
+  spriteScale: 2.4,
+  name: "Blue",
+  role: "Hatchling Keeper",
+  story: "Blue hatched first, fluffed up, and waited. The valley has been ready for her ever since. Care for her well and the world will come.",
+  palette: { body: 0x2a6bff, belly: 0x9ec8ff, accent: 0xffc35a },
+  prefersTime: "any",
+  isGateway: true,           // marks her as the always-first hatchling
+  buildEgg() {
+    return eggBase(0xc8e0ff, (g) => {
+      // a tiny crown-tuft on top, hinting at her identity before she hatches
+      const tuft = meshOf(new THREE.SphereGeometry(0.08, 8, 6), std(0x2a6bff), false);
+      tuft.scale.set(1.1, 0.6, 1.1);
+      tuft.position.y = 0.28;
+      g.add(tuft);
+      // little orange beak speck
+      const beak = meshOf(new THREE.ConeGeometry(0.04, 0.08, 4), std(0xff8a2a), false);
+      beak.rotation.z = -Math.PI / 2;
+      beak.position.set(0.18, -0.02, 0);
+      g.add(beak);
+    });
+  },
+  buildBody() {
+    const g = new THREE.Group();
+    // round fluffy body
+    const body = meshOf(new THREE.SphereGeometry(0.45, 16, 12), std(this.palette.body));
+    body.scale.set(1, 0.95, 1);
+    g.add(body);
+    const belly = meshOf(new THREE.SphereGeometry(0.32, 14, 10), std(this.palette.belly));
+    belly.position.set(0, -0.05, 0.12);
+    g.add(belly);
+    // crown tuft
+    const tuft = meshOf(new THREE.ConeGeometry(0.1, 0.22, 5), std(this.palette.body));
+    tuft.position.set(0.05, 0.5, 0);
+    tuft.rotation.z = -0.2;
+    g.add(tuft);
+    // wings
+    for (const z of [0.32, -0.32]) {
+      const w = meshOf(new THREE.BoxGeometry(0.1, 0.05, 0.28), std(this.palette.body));
+      w.position.set(0, 0, z);
+      g.add(w);
+    }
+    // beak
+    const beak = meshOf(new THREE.ConeGeometry(0.07, 0.16, 5), std(this.palette.accent));
+    beak.rotation.z = -Math.PI / 2;
+    beak.position.set(0.4, -0.02, 0);
+    g.add(beak);
+    g.add(makeEye(0.05, [0.28, 0.12, 0.13]));
+    g.add(makeEye(0.05, [0.28, 0.12, -0.13]));
+    // legs
+    for (const z of [0.1, -0.1]) {
+      const leg = meshOf(new THREE.CylinderGeometry(0.025, 0.025, 0.22, 5), std(0xff8a2a));
+      leg.position.set(0, -0.4, z);
+      g.add(leg);
+    }
+    return g;
+  },
+  specialLabel: "Sing a soft song",
+  specialCooldownMs: 6000,
+  special(world, actor) {
+    world.toast(actor.name + " sings a soft little song.");
+    world.discover(actor.id, "Sang a song — joy lifted across the valley.");
+    // Gateway perk: her song bumps every other hatched actor's joy.
+    for (const a of world.actors) a.joy = Math.min(1, a.joy + 0.05);
+  },
+  reactTo(eventId, world, self) {
+    // Blue is calm and warm to everything — gentle little joy bumps.
+    if (eventId === "ufo" || eventId === "auroraBorealis" || eventId === "meteor") {
+      self.joy = Math.min(1, self.joy + 0.04);
+    }
+    if (eventId === "wolf") self.joy = Math.max(0, self.joy - 0.03);
+  },
+};
+
 // ----- 1. AURORA — Sky-Whale ------------------------------------------------
 
 const aurora = {
@@ -738,5 +819,5 @@ const solis = {
 
 // -----------------------------------------------------------------------------
 
-export const CHARACTERS = [aurora, magma, glimmer, mossback, whisper, pip, bubble, ember, solis];
+export const CHARACTERS = [bluechicken, aurora, magma, glimmer, mossback, whisper, pip, bubble, ember, solis];
 export const CHARACTER_BY_ID = CHARACTERS.reduce((m, c) => (m[c.id] = c, m), {});

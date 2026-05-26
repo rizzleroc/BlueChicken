@@ -10,6 +10,13 @@ import { CHARACTERS } from "./characters3d.js";
 import { World } from "./world3d.js";
 import { audio } from "./audio.js";
 import { ACCELERATORS, ACCELERATOR_BY_ID, beginPurchase, consumeRedirect, applyAccelerator } from "./payments.js";
+import { Care, PRIZE_THRESHOLDS } from "./care.js";
+
+// Blue Chicken's Tamagotchi-style care state. Distinct localStorage key from
+// the world snapshot so resetting the prize-animal progression doesn't wipe
+// Blue's wellbeing (or vice versa).
+const care = new Care();
+window.__care = care;
 
 // ---- Renderer / Scene / Camera --------------------------------------------
 
@@ -63,37 +70,57 @@ world.preloadModels(CHARACTERS).then(() => {
   }
 });
 
-// ---- Restore prior session, then place remaining eggs --------------------
+// ---- Restore + place Blue's egg (other 8 are prize-gated) ----------------
 
 const PUBLIC_CHARS = CHARACTERS.filter((c) => !c.secret);
+const PRIZE_CHARS = PUBLIC_CHARS.filter((c) => !c.isGateway);
+const BLUE = PUBLIC_CHARS.find((c) => c.isGateway);
 const SECRET = CHARACTERS.find((c) => c.secret);
+const CHAR_BY_ID = Object.fromEntries(CHARACTERS.map((c) => [c.id, c]));
 let solisRevealed = false;
 
-// Read any persisted state from a prior session (hatched ids, discoveries,
-// flags). After this call, world.hatched is populated; we use it to decide
-// whether each character should appear as an egg or be respawned directly.
 const snap = world.loadSnapshot();
 
-PUBLIC_CHARS.forEach((c, i) => {
-  const ang = (i / PUBLIC_CHARS.length) * Math.PI * 2;
+// Helper: compute a spot on the home ring for a character at index i.
+// Blue gets the center; prize animals fan out around her at equal angles.
+function prizePos(i, totalPrizes) {
+  const ang = (i / totalPrizes) * Math.PI * 2;
   const r = 10;
+  return [Math.cos(ang) * r, Math.sin(ang) * r];
+}
+
+// Always: Blue's egg/actor first. She's at the center of the ring (0, *, 0).
+if (world.hatched && world.hatched[BLUE.id]) {
+  const actor = world._spawnActor(BLUE, new THREE.Vector3(0, 0, 0));
+  const saved = world._loadedActors && world._loadedActors[BLUE.id];
+  if (saved) {
+    if (typeof saved.joy === "number") actor.joy = saved.joy;
+    if (saved.mood) actor.mood = saved.mood;
+  }
+  refreshRosterFor(actor);
+} else {
+  world.placeEgg(BLUE, new THREE.Vector3(0, 0.55, 0));
+}
+
+// Prize animals: only place their egg if they were previously unlocked (via
+// past bond progression) — or hatched. New players start with Blue ONLY; the
+// prize roster expands as bond rises.
+PRIZE_CHARS.forEach((c, i) => {
+  const [x, z] = prizePos(i, PRIZE_CHARS.length);
   if (world.hatched && world.hatched[c.id]) {
-    // Previously hatched — respawn at a random spot inside the home ring with
-    // their persisted joy/mood. Do this after preload finishes so sprites land.
-    const restorePos = new THREE.Vector3(Math.cos(ang) * r * 0.6, 0, Math.sin(ang) * r * 0.6);
+    const restorePos = new THREE.Vector3(x * 0.6, 0, z * 0.6);
     const actor = world._spawnActor(c, restorePos);
     const saved = world._loadedActors && world._loadedActors[c.id];
-    if (saved) {
-      if (typeof saved.joy === "number") actor.joy = saved.joy;
-      if (saved.mood) actor.mood = saved.mood;
-    }
+    if (saved && typeof saved.joy === "number") actor.joy = saved.joy;
     refreshRosterFor(actor);
-  } else {
+  } else if (care.s.unlocked[c.id]) {
+    // Was unlocked via bond in a prior session but not yet hatched — place egg.
     const y = c.flying ? 8 : c.floating ? 2 : 0.55;
-    world.placeEgg(c, new THREE.Vector3(Math.cos(ang) * r, y, Math.sin(ang) * r));
+    world.placeEgg(c, new THREE.Vector3(x, y, z));
   }
+  // else: still locked, no egg in world yet. Will drop in via dropPrizeEgg().
 });
-// If Solis was previously revealed, bring her back too.
+
 if (snap && snap.hatched && (snap.hatched[SECRET.id] || snap.flags?.solisRevealed)) {
   solisRevealed = true;
   if (world.hatched[SECRET.id]) {
@@ -101,6 +128,20 @@ if (snap && snap.hatched && (snap.hatched[SECRET.id] || snap.flags?.solisReveale
   } else {
     world.placeEgg(SECRET, new THREE.Vector3(0, 2.5, 0));
   }
+}
+
+// Drop a prize-animal egg into the world. Called when bond crosses a
+// threshold (in the game loop). Animates the egg falling in from above so
+// the player notices.
+function dropPrizeEgg(charId) {
+  const c = CHAR_BY_ID[charId];
+  if (!c) return;
+  if (world.eggs[charId] || world.actors.find((a) => a.id === charId)) return;
+  const i = PRIZE_CHARS.indexOf(c);
+  const [x, z] = prizePos(i, PRIZE_CHARS.length);
+  const y = c.flying ? 8 : c.floating ? 2 : 0.55;
+  world.placeEgg(c, new THREE.Vector3(x, y, z));
+  world.toast(`${c.name}'s egg appeared — Blue's care brought it.`);
 }
 
 // ---- Roster ---------------------------------------------------------------
@@ -653,6 +694,75 @@ function updateJoyPill() {
   document.getElementById("joy-label").textContent = hatched + " / " + total + " hatched";
 }
 
+// ---- Blue Chicken care HUD -----------------------------------------------
+
+const careHud = document.getElementById("care");
+const careVibe = document.getElementById("care-vibe");
+const careHint = document.getElementById("care-hint");
+const careBars = {
+  hunger: document.getElementById("care-hunger"),
+  energy: document.getElementById("care-energy"),
+  happiness: document.getElementById("care-happiness"),
+  cleanliness: document.getElementById("care-cleanliness"),
+  sanity: document.getElementById("care-sanity"),
+  bond: document.getElementById("care-bond"),
+};
+
+// Care HUD shows only after Blue is hatched. Re-checked every frame because
+// hatching can happen mid-session.
+function updateCareHUD() {
+  const blueAlive = !!world.actors.find((a) => a.id === BLUE.id);
+  if (!blueAlive) {
+    careHud.hidden = true;
+    return;
+  }
+  careHud.hidden = false;
+  const s = care.s;
+  careBars.hunger.style.width      = s.hunger + "%";
+  careBars.energy.style.width      = s.energy + "%";
+  careBars.happiness.style.width   = s.happiness + "%";
+  careBars.cleanliness.style.width = s.cleanliness + "%";
+  careBars.sanity.style.width      = s.sanity + "%";
+  careBars.bond.style.width        = s.bond + "%";
+  careVibe.textContent = care.vibe();
+  // Disable buttons that won't fire (sleeping disables feed/play; low energy
+  // disables play).
+  const btnByCare = (k) => document.querySelector(`.care-actions button[data-care="${k}"]`);
+  if (btnByCare("feed"))  btnByCare("feed").disabled  = s.isSleeping;
+  if (btnByCare("play"))  btnByCare("play").disabled  = s.isSleeping || s.energy < 10;
+  if (btnByCare("clean")) btnByCare("clean").disabled = false;
+  if (btnByCare("pet"))   btnByCare("pet").disabled   = false;
+  const sleepBtn = btnByCare("sleep");
+  if (sleepBtn) sleepBtn.textContent = s.isSleeping ? "☼ Wake" : "☾ Sleep";
+  // Next prize hint
+  const nextPrize = PRIZE_THRESHOLDS.find((t) => !care.s.unlocked[t.id]);
+  if (nextPrize) {
+    careHint.textContent = `Next prize at bond ${nextPrize.bond} (${Math.floor(s.bond)}/${nextPrize.bond})`;
+  } else {
+    careHint.textContent = "All prize hatchlings unlocked.";
+  }
+}
+
+// Wire the 5 care buttons. Each invokes Care + plays a soft audio cue.
+document.querySelectorAll(".care-actions button").forEach((btn) => {
+  btn.onclick = () => {
+    const k = btn.dataset.care;
+    let fired = false;
+    switch (k) {
+      case "feed":  fired = care.feed();  if (fired) audio.tap(); break;
+      case "play":  fired = care.play();  if (fired) audio.pet(); break;
+      case "pet":   fired = care.pet();   if (fired) audio.pet(); break;
+      case "clean": fired = care.clean(); if (fired) audio.pop(); break;
+      case "sleep": fired = care.sleep(); break;
+    }
+    if (fired) {
+      // Brief actor reaction: pet/play/feed should jiggle Blue.
+      const blue = world.actors.find((a) => a.id === BLUE.id);
+      if (blue && k !== "sleep") world.petActor(blue);
+    }
+  };
+});
+
 // ---- Game loop ------------------------------------------------------------
 
 let last = performance.now();
@@ -663,7 +773,12 @@ function frame(now) {
   // Tester-mode 10× time: feed the world a multiplied dt. Day/night and event
   // scheduler both consume dt, so a single multiplier accelerates everything.
   world.tick(fastTime ? dt * 10 : dt);
+  // Blue's care ticks too — needs decay (or sleep regen) over real time.
+  care.tick(fastTime ? dt * 10 : dt);
+  // Roll any newly-unlocked prize animals into the world as eggs.
+  for (const t of care.newlyUnlocked()) dropPrizeEgg(t.id);
   updateJoyPill();
+  updateCareHUD();
   if (!solisRevealed && world.actors.length >= PUBLIC_CHARS.length) checkSolisGate();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
