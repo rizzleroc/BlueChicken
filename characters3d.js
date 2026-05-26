@@ -146,22 +146,43 @@ const bluechicken = {
     // Blue is the keeper. She greets every visitor in character — a calm hop,
     // a gentle bow, a quiet vigil — so the world never passes her unnoticed.
     // The "blue/<event>" flag gates the journal line so her log doesn't spam,
-    // but the visible reaction (hop / joy / heading) fires every time.
+    // but the visible reaction (hop / joy / heading / cluck) fires every time.
     const once = (flag) => {
       if (world.hasFlag(flag)) return false;
       world.flagSeen(flag);
       return true;
     };
+    const cluck = () => { if (world.audio && world.audio.cluck) world.audio.cluck(); };
+    // Aim Blue's heading toward another actor she wants to be near (huddle).
+    // Returns true if she found one; false if she's the only one out.
+    const turnToNearestPeer = () => {
+      let best = null, bestD = Infinity;
+      for (const a of world.actors) {
+        if (a.id === self.id) continue;
+        const d = a.mesh.position.distanceTo(self.mesh.position);
+        if (d < bestD) { best = a; bestD = d; }
+      }
+      if (!best) return false;
+      self.heading = Math.atan2(
+        best.mesh.position.z - self.mesh.position.z,
+        best.mesh.position.x - self.mesh.position.x
+      );
+      return true;
+    };
     switch (eventId) {
       // ---- scheduled visitors / weather ----
       case "ufo":
+        cluck();
         world.hopActor(self, 0.45, 500);
         self.joy = Math.min(1, self.joy + 0.05);
         if (once("blue/ufo")) world.discover(self.id, "Watched a UFO drift overhead.");
         break;
       case "firstContact":
-        // A small bow toward the visitor: dip down then rise.
+        // A small bow toward the visitor: dip down then rise. She walks
+        // toward the nearest peer afterward so the visitor finds the flock.
+        cluck();
         world.hopActor(self, -0.15, 700);
+        turnToNearestPeer();
         self.joy = Math.min(1, self.joy + 0.10);
         if (once("blue/firstContact")) world.discover(self.id, "Bowed to the visitor from the stars.");
         break;
@@ -172,12 +193,15 @@ const bluechicken = {
         if (once("blue/wolf")) world.discover(self.id, "Hid still until the wolf passed.");
         break;
       case "winter":
-        // Fluffs up and stays put — she's the warm spot others gather around.
+        // Fluffs up and heads toward another hatchling — the warm spot others
+        // gather around. Huddle is the visible behavior here.
         self.joy = Math.max(0, self.joy - 0.02);
+        turnToNearestPeer();
         if (once("blue/winter")) world.discover(self.id, "Fluffed up against the chill.");
         break;
       case "snowfall":
         // Hop in the snow and leave a tiny pale footprint trail.
+        cluck();
         world.hopActor(self, 0.35, 450);
         self.joy = Math.min(1, self.joy + 0.05);
         for (let i = 0; i < 3; i++) {
@@ -187,6 +211,7 @@ const bluechicken = {
         break;
       case "thaw":
         // Celebratory double-hop as the cold breaks.
+        cluck();
         world.hopActor(self, 0.55, 500);
         setTimeout(() => world.hopActor(self, 0.4, 400), 520);
         self.joy = Math.min(1, self.joy + 0.08);
@@ -200,6 +225,7 @@ const bluechicken = {
         break;
       case "meteor":
         // A wishful little hop.
+        cluck();
         world.hopActor(self, 0.45, 500);
         self.joy = Math.min(1, self.joy + 0.07);
         if (once("blue/meteor")) world.discover(self.id, "Made a wish on a streak of fire.");

@@ -185,6 +185,13 @@ export class AudioEngine {
   // ---- event cues ---------------------------------------------------------
 
   tap()         { this._blip({ type: "triangle", freqEnv: [880, 660], vol: 0.12, dur: 0.12, attack: 0.005, release: 0.08 }); }
+  // Short two-tone cluck Blue uses when she greets a visitor.
+  cluck()       {
+    this._blip({ type: "triangle", freqEnv: [780, 520], vol: 0.10, dur: 0.09, attack: 0.003, release: 0.06 });
+    setTimeout(() =>
+      this._blip({ type: "triangle", freqEnv: [620, 420], vol: 0.10, dur: 0.10, attack: 0.003, release: 0.07 }),
+    80);
+  }
   hatch()       {
     // Triumphant little major arpeggio.
     [0, 0.06, 0.12, 0.22].forEach((d, i) => setTimeout(() => {
