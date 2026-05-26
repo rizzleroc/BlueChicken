@@ -232,15 +232,44 @@ ol,ul{ list-style: none; }
   transform: translateY(-1px);
 }
 
-/* ============ NEEDS (left) ============
-   Hidden by default — user feedback: "no more cards showing." The 3D world
-   owns the screen; live state shows in the topbar (name + vibe + life-stage
-   + hatched count) and the bottom action bar. Add the .show class to surface
-   either card if a future toggle re-introduces them. */
-.needs, .stats {
-  display: none !important;
+/* ============ VIEW SWITCH (Care / Valley) ============ */
+.view-switch{
+  display: inline-flex;
+  padding: 3px;
+  background: rgba(20,12,32,.55);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 999px;
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
 }
-.needs.show, .stats.show { display: flex !important; }
+.view-btn{
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-family:'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .22em;
+  color: #cfc3e8;
+  transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.view-btn.active{
+  background: linear-gradient(135deg, rgba(255,127,214,.35), rgba(255,213,127,.25));
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255,127,214,.35), 0 0 0 1px rgba(255,255,255,.12) inset;
+}
+.view-btn:hover:not(.active){
+  background: rgba(255,255,255,.06);
+  color: #fff;
+}
+
+/* ============ VIEW-SCOPED VISIBILITY ============
+   Care view: side cards stay hidden, action bar visible (Blue is on screen).
+   Valley view: side stats panel surfaces (world snapshot), action bar hides
+   (no caring actions when you're surveying the valley). */
+.needs { display: none !important; }
+.stats { display: none !important; }
+body.view-valley .stats { display: flex !important; }
+body.view-care   .care-actions { display: flex; }
+body.view-valley .care-actions { display: none !important; }
 
 .needs{
   grid-area: needs;

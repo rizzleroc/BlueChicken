@@ -66,6 +66,7 @@ export class World {
     this._buildGround();
     this._scatterScenery();
     this._buildStars();
+    this._buildBarn();        // cozy farm dressing visible in CARE view
 
     this.actors = [];
     this.eggs = {};         // id -> { mesh, taps, charDef }
@@ -303,6 +304,193 @@ export class World {
     peakSprite.scale.setScalar(1.5);
     peakSprite.position.set(0, 14, -28);
     this.scene.add(peakSprite);
+  }
+
+  // Cozy farm dressing for the CARE view — a wooden coop behind Blue, a few
+  // hay bales, a low fence, a warm lantern. All parented to a single group
+  // so setView() can show/hide it in one toggle.
+  _buildBarn() {
+    const barn = new THREE.Group();
+    barn.name = "barn";
+
+    // Wooden plank colors (warm reds/browns) that read in dawn AND night.
+    const plankMat = new THREE.MeshStandardMaterial({ color: 0x8a3a2e, roughness: 0.85 });
+    const darkPlank = new THREE.MeshStandardMaterial({ color: 0x5a241c, roughness: 0.9 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a1612, roughness: 0.85 });
+    const hayMat = new THREE.MeshStandardMaterial({ color: 0xd9a850, roughness: 1 });
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a6b3a, roughness: 1 });
+
+    // --- The coop: a small barn behind Blue (negative Z) ---
+    const coop = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.2, 3.6), plankMat);
+    body.position.y = 1.6;
+    body.castShadow = true; body.receiveShadow = true;
+    coop.add(body);
+    // Pitched roof (two slanted boxes meeting at a ridge).
+    const roofL = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 3.9), roofMat);
+    roofL.position.set(-1.0, 3.6, 0);
+    roofL.rotation.z = Math.PI * 0.18;
+    coop.add(roofL);
+    const roofR = roofL.clone();
+    roofR.position.x = 1.0;
+    roofR.rotation.z = -Math.PI * 0.18;
+    coop.add(roofR);
+    // Door (dark plank rectangle on the front face).
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.08), darkPlank);
+    door.position.set(0, 0.9, 1.82);
+    coop.add(door);
+    // Round window above the door — bright yellow disc (interior lamp glow).
+    const windowGeom = new THREE.CircleGeometry(0.36, 24);
+    const windowMat = new THREE.MeshBasicMaterial({ color: 0xffd57f, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
+    const win = new THREE.Mesh(windowGeom, windowMat);
+    win.position.set(0, 2.4, 1.83);
+    coop.add(win);
+    // Soft point light inside the window, glow at the door.
+    const lamp = new THREE.PointLight(0xffd29a, 0.9, 10, 1.6);
+    lamp.position.set(0, 2.4, 1.4);
+    coop.add(lamp);
+
+    coop.position.set(0, 0, -5.4);
+    barn.add(coop);
+
+    // --- Hay bales, scattered to either side of Blue ---
+    const bale = (x, z, rot) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.1, 16), hayMat);
+      m.rotation.z = Math.PI / 2;
+      m.rotation.y = rot;
+      m.position.set(x, 0.6, z);
+      m.castShadow = true; m.receiveShadow = true;
+      return m;
+    };
+    barn.add(bale(-3.4, -2.6, 0.2));
+    barn.add(bale(-4.2, -1.4, -0.4));
+    barn.add(bale(3.6,  -2.4, 0.6));
+    barn.add(bale(3.0,  2.6,  -0.3));
+
+    // --- Picket fence: short low posts ringing the front of the scene ---
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0xe7d7b5, roughness: 0.9 });
+    for (let i = -3; i <= 3; i++) {
+      if (Math.abs(i) <= 1) continue; // gap for camera-facing view of Blue
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.95, 0.15), fenceMat);
+      post.position.set(i * 0.9, 0.45, 4.2);
+      post.castShadow = true;
+      barn.add(post);
+    }
+    // Two horizontal fence rails connecting the posts.
+    const rail = (y, x0, x1) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x1 - x0), 0.08, 0.08), fenceMat);
+      m.position.set((x0 + x1) / 2, y, 4.2);
+      return m;
+    };
+    barn.add(rail(0.65, -2.7, -1.8));
+    barn.add(rail(0.40, -2.7, -1.8));
+    barn.add(rail(0.65,  1.8,  2.7));
+    barn.add(rail(0.40,  1.8,  2.7));
+
+    // --- Soft grass tuft circle around Blue's standing spot ---
+    const tuftGeom = new THREE.ConeGeometry(0.14, 0.55, 4);
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2;
+      const r = 2.4 + Math.random() * 1.2;
+      const tuft = new THREE.Mesh(tuftGeom, grassMat);
+      tuft.position.set(Math.cos(a) * r, 0.28, Math.sin(a) * r);
+      tuft.rotation.y = Math.random() * Math.PI;
+      tuft.scale.y = 0.7 + Math.random() * 0.6;
+      barn.add(tuft);
+    }
+
+    // --- Feed bowl in front of Blue (visual hook for "FEED") ---
+    const bowl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.32, 0.18, 16),
+      new THREE.MeshStandardMaterial({ color: 0x6c4a2a, roughness: 0.7 }),
+    );
+    bowl.position.set(1.4, 0.09, 2.2);
+    bowl.castShadow = true; bowl.receiveShadow = true;
+    barn.add(bowl);
+    const seed = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.36, 0.36, 0.04, 16),
+      new THREE.MeshStandardMaterial({ color: 0xe8c068, roughness: 1 }),
+    );
+    seed.position.set(1.4, 0.20, 2.2);
+    barn.add(seed);
+
+    this.scene.add(barn);
+    this.barn = barn;
+  }
+
+  // ------------------------------------------------------------------
+  // View modes: "care" (close on Blue, barn dressing visible, prize
+  // creatures + their eggs hidden) and "valley" (pulled back, all prize
+  // creatures + eggs visible, barn group hidden so the wider valley reads).
+  // The frame loop lerps the camera toward this._cameraTarget every tick.
+  // ------------------------------------------------------------------
+  setView(mode, opts = {}) {
+    const changing = this.view !== mode;
+    this.view = mode;
+    const instant = !!opts.instant;
+    if (changing || instant) {
+      if (mode === "care") {
+        // Close, slightly above eye-level, looking at the coop / Blue.
+        this._cameraTarget = {
+          pos:  new THREE.Vector3(0, 2.4, 7.5),
+          look: new THREE.Vector3(0, 1.1, 0),
+        };
+      } else {
+        // Wide valley overview — same vantage as the original boot frame.
+        this._cameraTarget = {
+          pos:  new THREE.Vector3(8, 7, 16),
+          look: new THREE.Vector3(0, 1.0, 0),
+        };
+      }
+      if (instant && this._cameraTarget) {
+        this.camera.position.copy(this._cameraTarget.pos);
+        if (this._orbit) this._orbit.target.copy(this._cameraTarget.look);
+        else this.camera.lookAt(this._cameraTarget.look);
+        this._cameraTarget = null;
+      }
+    }
+    this._applyViewVisibility();
+  }
+
+  _applyViewVisibility() {
+    const mode = this.view;
+    // Barn only visible in care view.
+    if (this.barn) this.barn.visible = (mode === "care");
+    // Hide prize actors + their eggs in care view; restore in valley.
+    const showPrize = (mode !== "care");
+    for (const a of this.actors) {
+      if (a.def.isGateway || a.def.secret) continue; // Blue + Solis always visible
+      a.mesh.visible = showPrize;
+    }
+    for (const id in this.eggs) {
+      const e = this.eggs[id];
+      if (!e || !e.charDef) continue;
+      if (e.charDef.isGateway || e.charDef.secret) continue;
+      if (e.mesh) e.mesh.visible = showPrize;
+    }
+  }
+
+  // Lerp the camera toward this._cameraTarget. Called every frame after
+  // controls.update() so OrbitControls' tweak isn't overwritten when no
+  // target is set (e.g. user is dragging). Returns true if the controls
+  // target needs an update.
+  _animateCamera(dt) {
+    if (!this._cameraTarget) return;
+    const k = 1 - Math.exp(-dt * 0.005); // exponential approach
+    this.camera.position.lerp(this._cameraTarget.pos, k);
+    // OrbitControls drives lookAt via .target — animate that instead of
+    // calling lookAt directly, otherwise the next controls.update() snaps back.
+    if (this._orbit) {
+      this._orbit.target.lerp(this._cameraTarget.look, k);
+    } else {
+      this.camera.lookAt(this._cameraTarget.look);
+    }
+    // Snap + clear once we're close enough.
+    if (this.camera.position.distanceTo(this._cameraTarget.pos) < 0.01) {
+      this.camera.position.copy(this._cameraTarget.pos);
+      if (this._orbit) this._orbit.target.copy(this._cameraTarget.look);
+      this._cameraTarget = null;
+    }
   }
 
   // Paint a single dark-purple mountain silhouette. Pyramid form for the
@@ -1083,6 +1271,10 @@ export class World {
     label.userData.eggRef = wrap;
     wrap.add(label);
 
+    // Care view shows only Blue's egg + Solis's; prize eggs hide until valley.
+    if (this.view === "care" && !charDef.isGateway && !charDef.secret) {
+      wrap.visible = false;
+    }
     this.scene.add(wrap);
     this.eggs[charDef.id] = {
       mesh: wrap, taps: 0, charDef,
@@ -1189,6 +1381,11 @@ export class World {
     };
     this.actors.push(actor);
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
+    // Respect the current view mode — a prize actor hatching during care view
+    // shouldn't pop into the close-up; it'll appear when the user switches.
+    if (this.view === "care" && !charDef.isGateway && !charDef.secret) {
+      mesh.visible = false;
+    }
     return actor;
   }
 

@@ -56,6 +56,10 @@ window.addEventListener("resize", () => {
 
 const world = new World({ renderer, scene, camera });
 world.audio = audio;
+// Hand the world a reference to OrbitControls so its setView() can animate
+// the orbit target — without this, controls.update() snaps lookAt back each
+// frame and the camera tween fights itself.
+world._orbit = controls;
 window.__world = world;
 
 // Preload painted portrait textures (and any GLBs if they exist). Missing
@@ -619,6 +623,44 @@ devpanel.addEventListener("click", (ev) => {
   }
 });
 
+// ---- View switch (Care / Valley) -----------------------------------------
+// CARE = close-up Tamagotchi view of Blue, with the barn/coop dressing and
+// the action bar surfaced. VALLEY = pulled-back overview of all hatchlings
+// with the world stats panel surfaced.
+
+const viewCareBtn   = document.getElementById("view-care");
+const viewValleyBtn = document.getElementById("view-valley");
+
+function setBodyView(mode) {
+  document.body.classList.toggle("view-care",   mode === "care");
+  document.body.classList.toggle("view-valley", mode === "valley");
+  viewCareBtn.classList.toggle("active",   mode === "care");
+  viewValleyBtn.classList.toggle("active", mode === "valley");
+  viewCareBtn.setAttribute("aria-selected",   mode === "care"   ? "true" : "false");
+  viewValleyBtn.setAttribute("aria-selected", mode === "valley" ? "true" : "false");
+}
+
+function switchView(mode) {
+  setBodyView(mode);
+  world.setView(mode);
+  // Re-target orbit limits per view so the user can't accidentally drag out
+  // of the cozy framing in care view.
+  if (mode === "care") {
+    controls.minDistance = 4;
+    controls.maxDistance = 14;
+  } else {
+    controls.minDistance = 4;
+    controls.maxDistance = 50;
+  }
+}
+
+viewCareBtn.onclick   = () => { audio.tap(); switchView("care"); };
+viewValleyBtn.onclick = () => { audio.tap(); switchView("valley"); };
+
+// Boot in care view — it's the entry / hatching experience.
+setBodyView("care");
+world.setView("care", { instant: true });
+
 // Hide the controls hint after 9 seconds.
 
 // ---- Joy / hatched pill ---------------------------------------------------
@@ -747,13 +789,18 @@ function frame(now) {
   const dt = Math.min(50, now - last);
   last = now;
   controls.update();
+  world._animateCamera(dt);
   // Tester-mode 10× time: feed the world a multiplied dt. Day/night and event
   // scheduler both consume dt, so a single multiplier accelerates everything.
   world.tick(fastTime ? dt * 10 : dt);
   // Blue's care ticks too — needs decay (or sleep regen) over real time.
   care.tick(fastTime ? dt * 10 : dt);
   // Roll any newly-unlocked prize animals into the world as eggs.
-  for (const t of care.newlyUnlocked()) dropPrizeEgg(t.id);
+  const newlyDropped = care.newlyUnlocked();
+  for (const t of newlyDropped) dropPrizeEgg(t.id);
+  // If a new prize-egg appeared and we're in care view, keep it hidden until
+  // the player switches to the valley view — preserves the cozy close-up.
+  if (newlyDropped.length) world._applyViewVisibility();
   updateJoyPill();
   updateCareHUD();
   if (!solisRevealed && world.actors.length >= PUBLIC_CHARS.length) checkSolisGate();
