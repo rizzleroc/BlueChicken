@@ -115,7 +115,10 @@ PRIZE_CHARS.forEach((c, i) => {
     const restorePos = new THREE.Vector3(x * 0.6, 0, z * 0.6);
     const actor = world._spawnActor(c, restorePos);
     const saved = world._loadedActors && world._loadedActors[c.id];
-    if (saved && typeof saved.joy === "number") actor.joy = saved.joy;
+    if (saved) {
+      if (typeof saved.joy === "number") actor.joy = saved.joy;
+      if (saved.graduated) { actor.graduated = true; actor.graduatedAt = saved.graduatedAt || 0; }
+    }
     refreshRosterFor(actor);
   } else if (care.s.unlocked[c.id]) {
     // Was unlocked via bond in a prior session but not yet hatched — place egg.
