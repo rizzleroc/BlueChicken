@@ -114,7 +114,7 @@
   // and flash a green "X has grown up" notice on every new arrival.
   const GRAD_KEY = "bluechicken/graduates";
   const SEEN_KEY = "bluechicken/graduates/shell-seen";
-  const flockStrip = document.getElementById("flock-strip");
+  const flockLayer = document.getElementById("flock-layer");
   const gradNotice = document.getElementById("grad-notice");
 
   function readGraduates() {
@@ -140,49 +140,161 @@
     flashGradNotice._t = setTimeout(() => gradNotice.classList.remove("show"), 6500);
   }
 
-  function renderFlock() {
-    const graduates = readGraduates();
-    if (graduates.length === 0) {
-      flockStrip.classList.remove("show");
-      flockStrip.innerHTML = "";
-      return;
-    }
-    flockStrip.classList.add("show");
-    // V1 lives in main/, so portraits referenced as "docs/portraits/X.png"
-    // would resolve relative to the SHELL — which works since docs/portraits
-    // is at the repo root too. Build the resolved URL once.
-    const existing = new Set(Array.from(flockStrip.children).map((el) => el.dataset.id));
-    for (const g of graduates) {
-      if (existing.has(g.id)) continue;
-      const img = document.createElement("img");
-      img.className = "flock-member fresh";
-      img.dataset.id = g.id;
-      img.alt = g.name || g.id;
-      img.title = `${g.name || g.id} — ${g.role || "graduate"}`;
-      // Portraits live under ./docs/portraits/ on the shell (root) — but the
-      // realm references them as relative paths; resolve against ./realm.html.
-      img.src = g.portrait
-        ? new URL(g.portrait, location.href.replace(/[^\/]+$/, "")).href
-        : "";
-      flockStrip.appendChild(img);
-    }
+  // ---- Wandering-flock AI ------------------------------------------------
+  // Each graduate gets a sprite that drifts the barnyard, hops, pops emoji
+  // thought-bubbles, and walks toward each other to socialize. Needs decay
+  // over time and mood updates ring the sprite with a colored outline.
+  const NEEDS_DECAY = { hunger: 0.5, energy: 0.4, fun: 0.35, social: 0.3 }; // per second
+  const MOOD_EMOTES = {
+    happy:   ["♡", "✦", "✿", "♪"],
+    playful: ["♪", "✦", "★", "♬"],
+    hungry:  ["🌾", "✦", "·"],
+    tired:   ["☾", "z", "·"],
+    sad:     ["·", "·", "♢"],
+  };
+  const flockSprites = new Map(); // id -> { el, x, y, needs, mood, ... }
+
+  function spawnFlockSprite(g, fresh) {
+    if (flockSprites.has(g.id)) return;
+    const img = document.createElement("img");
+    img.className = "flock-member" + (fresh ? " fresh" : "");
+    img.dataset.id = g.id;
+    img.alt = g.name || g.id;
+    img.title = `${g.name || g.id} — ${g.role || "graduate"}`;
+    img.src = g.portrait
+      ? new URL(g.portrait, location.href.replace(/[^\/]+$/, "")).href
+      : "";
+    flockLayer.appendChild(img);
+    const W = window.innerWidth, H = window.innerHeight;
+    const s = {
+      g, el: img,
+      x: 80 + Math.random() * (W - 160),
+      y: 140 + Math.random() * (H - 340),
+      target: null, lastEmoteAt: 0, lastHopAt: 0,
+      needs: { hunger: 70 + Math.random() * 30, energy: 70 + Math.random() * 30,
+               fun: 60 + Math.random() * 30, social: 60 + Math.random() * 30 },
+      mood: "happy",
+    };
+    img.addEventListener("click", () => onPlayerInteract(s));
+    flockSprites.set(g.id, s);
+    place(s);
   }
 
-  function pollGraduates() {
+  function place(s) {
+    s.el.style.transform = `translate(${s.x - 28}px, ${s.y - 28}px)`;
+  }
+
+  function moodFrom(needs) {
+    if (needs.hunger < 25) return "hungry";
+    if (needs.energy < 25) return "tired";
+    if (needs.fun < 25 || needs.social < 25) return "sad";
+    if (needs.fun > 70 && needs.energy > 50) return "playful";
+    return "happy";
+  }
+  function setMood(s, mood) {
+    if (s.mood === mood) return;
+    s.mood = mood;
+    s.el.classList.remove("mood-happy", "mood-hungry", "mood-sad", "mood-tired", "mood-playful");
+    s.el.classList.add("mood-" + mood);
+  }
+
+  function emote(s, glyph) {
+    const e = document.createElement("div");
+    e.className = "flock-emote";
+    e.textContent = glyph;
+    e.style.left = `${s.x}px`;
+    e.style.top  = `${s.y - 36}px`;
+    flockLayer.appendChild(e);
+    setTimeout(() => e.remove(), 2000);
+    s.lastEmoteAt = performance.now();
+  }
+  function hop(s) {
+    s.el.animate(
+      [{ transform: `translate(${s.x - 28}px, ${s.y - 28}px)` },
+       { transform: `translate(${s.x - 28}px, ${s.y - 28 - 20}px)` },
+       { transform: `translate(${s.x - 28}px, ${s.y - 28}px)` }],
+      { duration: 380, easing: "ease-out" }
+    );
+    s.lastHopAt = performance.now();
+  }
+  function onPlayerInteract(s) {
+    s.needs.social = Math.min(100, s.needs.social + 40);
+    s.needs.fun    = Math.min(100, s.needs.fun + 25);
+    setMood(s, moodFrom(s.needs));
+    emote(s, "♡");
+    hop(s);
+  }
+  function pickTarget(s) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const need = Object.entries(s.needs).sort((a, b) => a[1] - b[1])[0];
+    const [worstName] = need;
+    if (worstName === "social" && flockSprites.size > 1) {
+      const others = Array.from(flockSprites.values()).filter((o) => o !== s);
+      const peer = others[Math.floor(Math.random() * others.length)];
+      s.target = { x: peer.x, y: peer.y, kind: "social", peer };
+    } else {
+      s.target = {
+        x: 80 + Math.random() * (W - 160),
+        y: 140 + Math.random() * (H - 340),
+        kind: worstName,
+      };
+    }
+  }
+  function tick(now) {
+    const dt = Math.min(64, now - (tick._last || now));
+    tick._last = now;
+    const dts = dt / 1000;
+    for (const s of flockSprites.values()) {
+      for (const k in NEEDS_DECAY) s.needs[k] = Math.max(0, s.needs[k] - NEEDS_DECAY[k] * dts);
+      setMood(s, moodFrom(s.needs));
+      if (!s.target) pickTarget(s);
+      const dx = s.target.x - s.x, dy = s.target.y - s.y;
+      const dist = Math.hypot(dx, dy);
+      const speed = 0.06;
+      if (dist > 4) {
+        s.x += (dx / dist) * speed * dt;
+        s.y += (dy / dist) * speed * dt;
+      } else {
+        if (s.target.kind === "social" && s.target.peer) {
+          s.needs.social = Math.min(100, s.needs.social + 30);
+          s.target.peer.needs.social = Math.min(100, s.target.peer.needs.social + 30);
+          emote(s, "♡"); emote(s.target.peer, "♡");
+          hop(s); hop(s.target.peer);
+        } else if (s.target.kind === "hunger") {
+          s.needs.hunger = Math.min(100, s.needs.hunger + 40); emote(s, "🌾");
+        } else if (s.target.kind === "energy") {
+          s.needs.energy = Math.min(100, s.needs.energy + 50); emote(s, "☾");
+        } else if (s.target.kind === "fun") {
+          s.needs.fun = Math.min(100, s.needs.fun + 40); emote(s, "♪"); hop(s);
+        }
+        s.target = null;
+      }
+      if (s.mood === "playful" && now - s.lastHopAt > 4000 && Math.random() < 0.005) hop(s);
+      if (now - s.lastEmoteAt > 4500 && Math.random() < 0.004) {
+        const set = MOOD_EMOTES[s.mood] || MOOD_EMOTES.happy;
+        emote(s, set[Math.floor(Math.random() * set.length)]);
+      }
+      place(s);
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  function syncFlock() {
     const graduates = readGraduates();
     const seen = readSeenIds();
     let dirty = false;
     for (const g of graduates) {
-      if (!seen.has(g.id)) {
+      const fresh = !seen.has(g.id);
+      if (fresh) {
         flashGradNotice(g.name || g.id);
         seen.add(g.id);
         dirty = true;
       }
+      spawnFlockSprite(g, fresh);
     }
     if (dirty) writeSeenIds(seen);
-    renderFlock();
   }
-  // Initial render — but don't flash for anyone already seen (silent rebuild).
-  renderFlock();
-  setInterval(pollGraduates, 2000);
+  syncFlock();
+  setInterval(syncFlock, 2000);
 })();

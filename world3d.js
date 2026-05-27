@@ -443,6 +443,249 @@ export class World {
   // creatures + eggs visible, barn group hidden so the wider valley reads).
   // The frame loop lerps the camera toward this._cameraTarget every tick.
   // ------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // V1 inventory → realm props. Every item Cluckbot owns in V1's shop
+  // appears as a physical object in the barn (yarn ball, mirror, robot
+  // worm, henhouse, fence, disco ball, ...). setInventory is called by
+  // main3d.js whenever the V1 inventory localStorage key changes.
+  // ------------------------------------------------------------------
+  setInventory(itemIds) {
+    if (!Array.isArray(itemIds)) itemIds = [];
+    if (!this._propGroup) {
+      this._propGroup = new THREE.Group();
+      this._propGroup.name = "barn-props";
+      this.scene.add(this._propGroup);
+      // Props belong to the barn aesthetic, so respect view visibility.
+      this._propGroup.visible = (this.view === "care");
+    }
+    // Clear existing props — simpler than diffing, runs at most a few times.
+    while (this._propGroup.children.length) {
+      const c = this._propGroup.children[0];
+      this._propGroup.remove(c);
+      c.traverse?.((n) => { if (n.geometry) n.geometry.dispose(); });
+    }
+    // Each item slots into a fixed barn position so layout stays stable.
+    // The full set of V1 shop items + where they go in the coop.
+    const SLOTS = {
+      lamp:      { pos: [-2.2, 1.6, -3.8], build: () => this._propLamp() },
+      dish:      { pos: [-1.0, 0.0,  2.6], build: () => this._propWaterDish() },
+      feeder:    { pos: [ 2.2, 0.0, -1.0], build: () => this._propAutoFeeder() },
+      bed:       { pos: [ 0.0, 0.0, -4.5], build: () => this._propStrawBed() },
+      perch:     { pos: [-1.8, 0.0, -4.0], build: () => this._propPerch() },
+      dustbath:  { pos: [-2.6, 0.0,  1.4], build: () => this._propDustBath() },
+      ball:      { pos: [ 1.0, 0.0,  0.8], build: () => this._propYarnBall() },
+      mirror:    { pos: [ 2.6, 0.0, -3.4], build: () => this._propMirror() },
+      worm:      { pos: [-1.2, 0.0,  0.6], build: () => this._propWorm() },
+      coop:      { pos: [ 4.6, 0.0, -3.4], build: () => this._propMiniCoop() },
+      henhouse:  { pos: [-4.8, 0.0, -3.8], build: () => this._propHenhouse() },
+      fence:     { pos: [ 0.0, 0.0,  5.2], build: () => this._propExtraFence() },
+      disco:     { pos: [ 0.0, 4.4, -3.0], build: () => this._propDiscoBall() },
+      therapist: { pos: [ 3.4, 0.0,  3.4], build: () => this._propTherapist() },
+    };
+    // Build + place each owned prop, and expose it to Blue's toy loop so she
+    // pecks at bowls / hops on bales / etc.
+    const newToys = [
+      // Built-in barn toys are always available
+      { pos: new THREE.Vector3(1.4, 0.0, 2.2),   kind: "peck",  label: "bowl" },
+      { pos: new THREE.Vector3(-3.4, 0.0, -2.6), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(-4.2, 0.0, -1.4), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(3.6,  0.0, -2.4), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(3.0,  0.0,  2.6), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(0.0,  0.0, -3.6), kind: "preen", label: "coop" },
+    ];
+    const TOY_KIND = {
+      ball: "peck", worm: "peck", mirror: "preen", bed: "preen",
+      perch: "hop", dustbath: "preen", dish: "peck", feeder: "peck",
+      henhouse: "preen", coop: "preen", disco: "preen", therapist: "preen",
+    };
+    for (const id of itemIds) {
+      const slot = SLOTS[id];
+      if (!slot) continue;
+      const mesh = slot.build();
+      if (!mesh) continue;
+      mesh.position.set(slot.pos[0], slot.pos[1], slot.pos[2]);
+      mesh.userData.itemId = id;
+      this._propGroup.add(mesh);
+      // Add to the toy loop if this item has an interaction kind.
+      const kind = TOY_KIND[id];
+      if (kind) {
+        newToys.push({ pos: new THREE.Vector3(slot.pos[0], 0, slot.pos[2]), kind, label: id });
+      }
+    }
+    this.toys = newToys;
+    this._inventory = itemIds.slice();
+  }
+
+  // Each prop builder returns a small THREE.Group sized for the barn.
+  _propLamp() {
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 8),
+      new THREE.MeshStandardMaterial({ color: 0x6b5d3e, roughness: 0.7 }));
+    pole.position.y = -0.8; g.add(pole);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.32, 16, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0xc8a04a, roughness: 0.4, metalness: 0.5, side: THREE.DoubleSide }));
+    shade.position.y = 0.05; g.add(shade);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xfff0b8, transparent: true, opacity: 0.9 }));
+    bulb.position.y = -0.10; g.add(bulb);
+    const light = new THREE.PointLight(0xffe0a0, 1.2, 8, 1.6);
+    light.position.y = -0.10; g.add(light);
+    return g;
+  }
+  _propWaterDish() {
+    const g = new THREE.Group();
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.35, 0.18, 18),
+      new THREE.MeshStandardMaterial({ color: 0x8d8da3, roughness: 0.5, metalness: 0.3 }));
+    bowl.position.y = 0.09; g.add(bowl);
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.04, 18),
+      new THREE.MeshStandardMaterial({ color: 0x6dc7f5, transparent: true, opacity: 0.78, roughness: 0.15 }));
+    water.position.y = 0.20; g.add(water);
+    return g;
+  }
+  _propAutoFeeder() {
+    const g = new THREE.Group();
+    const hopper = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.30, 0.6, 12),
+      new THREE.MeshStandardMaterial({ color: 0x4a5a78, roughness: 0.4, metalness: 0.6 }));
+    hopper.position.y = 0.4; g.add(hopper);
+    const tray = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.08, 16),
+      new THREE.MeshStandardMaterial({ color: 0x6c4a2a, roughness: 0.7 }));
+    tray.position.y = 0.04; g.add(tray);
+    return g;
+  }
+  _propStrawBed() {
+    const g = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.18, 1.2),
+      new THREE.MeshStandardMaterial({ color: 0xd9a850, roughness: 1 }));
+    base.position.y = 0.09; g.add(base);
+    // A few straw tufts pointing up.
+    for (let i = 0; i < 10; i++) {
+      const tuft = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 4),
+        new THREE.MeshStandardMaterial({ color: 0xe9c270, roughness: 1 }));
+      tuft.position.set((Math.random() - 0.5) * 1.4, 0.28, (Math.random() - 0.5) * 1.0);
+      tuft.rotation.y = Math.random() * Math.PI;
+      g.add(tuft);
+    }
+    return g;
+  }
+  _propPerch() {
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 8),
+      new THREE.MeshStandardMaterial({ color: 0x8a5c3a, roughness: 0.85 }));
+    post.position.y = 0.7; g.add(post);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 8),
+      new THREE.MeshStandardMaterial({ color: 0x8a5c3a, roughness: 0.85 }));
+    bar.rotation.z = Math.PI / 2; bar.position.y = 1.3; g.add(bar);
+    return g;
+  }
+  _propDustBath() {
+    const g = new THREE.Group();
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.5, 0.16, 18),
+      new THREE.MeshStandardMaterial({ color: 0x9b8460, roughness: 0.95 }));
+    dish.position.y = 0.08; g.add(dish);
+    const dust = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.06, 18),
+      new THREE.MeshStandardMaterial({ color: 0xc4a878, roughness: 1 }));
+    dust.position.y = 0.18; g.add(dust);
+    return g;
+  }
+  _propYarnBall() {
+    const g = new THREE.Group();
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.22, 18, 14),
+      new THREE.MeshStandardMaterial({ color: 0xff8fb8, roughness: 0.95 }));
+    ball.position.y = 0.22; g.add(ball);
+    return g;
+  }
+  _propMirror() {
+    const g = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0xd4af6a, roughness: 0.4, metalness: 0.7 }));
+    frame.position.y = 0.45; g.add(frame);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.56),
+      new THREE.MeshBasicMaterial({ color: 0xd6e7f0, transparent: true, opacity: 0.85 }));
+    glass.position.set(0, 0.45, 0.05); g.add(glass);
+    return g;
+  }
+  _propWorm() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.5, 6, 12),
+      new THREE.MeshStandardMaterial({ color: 0xff8a52, roughness: 0.5, metalness: 0.3 }));
+    body.rotation.z = Math.PI / 2; body.position.y = 0.1; g.add(body);
+    // Eye dots so it reads as a robot worm.
+    const eye = (x) => {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0x0a0a18 }));
+      e.position.set(x, 0.18, 0.07); g.add(e);
+    };
+    eye(0.27); eye(0.27 - 0.03);
+    return g;
+  }
+  _propMiniCoop() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.1, 1.2),
+      new THREE.MeshStandardMaterial({ color: 0x8a3a2e, roughness: 0.85 }));
+    body.position.y = 0.55; g.add(body);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.4),
+      new THREE.MeshStandardMaterial({ color: 0x3a1612, roughness: 0.85 }));
+    roof.position.y = 1.15; roof.rotation.z = 0.08; g.add(roof);
+    return g;
+  }
+  _propHenhouse() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.8, 1.8),
+      new THREE.MeshStandardMaterial({ color: 0x6b3424, roughness: 0.85 }));
+    body.position.y = 0.9; g.add(body);
+    const roofL = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.14, 1.9),
+      new THREE.MeshStandardMaterial({ color: 0x2a100c, roughness: 0.85 }));
+    roofL.position.set(-0.5, 2.0, 0); roofL.rotation.z = 0.32; g.add(roofL);
+    const roofR = roofL.clone();
+    roofR.position.x = 0.5; roofR.rotation.z = -0.32;
+    g.add(roofR);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.1, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0x3a1810, roughness: 0.9 }));
+    door.position.set(0, 0.55, 0.92); g.add(door);
+    const window = new THREE.Mesh(new THREE.CircleGeometry(0.18, 18),
+      new THREE.MeshBasicMaterial({ color: 0xffd57f }));
+    window.position.set(-0.7, 1.4, 0.91); g.add(window);
+    return g;
+  }
+  _propExtraFence() {
+    const g = new THREE.Group();
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0xe7d7b5, roughness: 0.9 });
+    for (let i = -3; i <= 3; i++) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.12), fenceMat);
+      post.position.set(i * 0.7, 0.45, 0);
+      g.add(post);
+    }
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.08, 0.06), fenceMat);
+    rail.position.y = 0.65; g.add(rail);
+    const rail2 = rail.clone(); rail2.position.y = 0.35; g.add(rail2);
+    return g;
+  }
+  _propDiscoBall() {
+    const g = new THREE.Group();
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.35, 20, 16),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 1.0, envMapIntensity: 1.5 }));
+    g.add(ball);
+    // Spinning ring of point lights — colored hue picks a different shade
+    // each frame so the floor gets the rainbow strobe.
+    const light = new THREE.PointLight(0xff66ff, 0.9, 8, 1.4);
+    g.add(light);
+    g.userData.disco = { light };
+    return g;
+  }
+  _propTherapist() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.45),
+      new THREE.MeshStandardMaterial({ color: 0xcfc3e8, roughness: 0.4, metalness: 0.5 }));
+    body.position.y = 0.45; g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12),
+      new THREE.MeshStandardMaterial({ color: 0xc890ff, roughness: 0.3, metalness: 0.6 }));
+    head.position.y = 1.05; g.add(head);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0x7fe9ff }));
+    eye.position.set(0, 1.06, 0.20); g.add(eye);
+    return g;
+  }
+
   setView(mode, opts = {}) {
     const changing = this.view !== mode;
     this.view = mode;
@@ -475,6 +718,7 @@ export class World {
     const mode = this.view;
     // Barn only visible in care view.
     if (this.barn) this.barn.visible = (mode === "care");
+    if (this._propGroup) this._propGroup.visible = (mode === "care");
     // Hide prize actors + their eggs in care view; restore in valley.
     const showPrize = (mode !== "care");
     for (const a of this.actors) {
