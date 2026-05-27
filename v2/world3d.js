@@ -26,29 +26,31 @@ export class World {
     this.camera = camera;
 
     // Sky background colors per time-of-day. The sun light direction tracks t.
+    // Modern cute palette — bright pastel midday, cream dawn, warm dusk,
+    // deep but starlit night. Day reads as a friendly Teletubby/Sims meadow.
     this.skyColors = {
-      dawn:  new THREE.Color(0xf3b5a0),
-      day:   new THREE.Color(0x88c4f0),
-      dusk:  new THREE.Color(0xa86c75),
-      night: new THREE.Color(0x0c1234),
+      dawn:  new THREE.Color(0xffd4c0),
+      day:   new THREE.Color(0xa6d8ff),
+      dusk:  new THREE.Color(0xffb3c1),
+      night: new THREE.Color(0x1a2050),
     };
     this.fogColors = {
-      dawn:  new THREE.Color(0xeac2a8),
-      day:   new THREE.Color(0xd6ebfb),
-      dusk:  new THREE.Color(0x916578),
-      night: new THREE.Color(0x111738),
+      dawn:  new THREE.Color(0xfde0d0),
+      day:   new THREE.Color(0xe2f0ff),
+      dusk:  new THREE.Color(0xffd0d4),
+      night: new THREE.Color(0x1a234a),
     };
     this.ambientColors = {
-      dawn:  new THREE.Color(0xffd4c0),
-      day:   new THREE.Color(0xeef4ff),
-      dusk:  new THREE.Color(0xffb38c),
-      night: new THREE.Color(0x6080b0),
+      dawn:  new THREE.Color(0xffe4d0),
+      day:   new THREE.Color(0xfff8f0),
+      dusk:  new THREE.Color(0xffd0c0),
+      night: new THREE.Color(0x7898c4),
     };
     this.sunColors = {
-      dawn:  new THREE.Color(0xffdcb0),
-      day:   new THREE.Color(0xfff4dc),
-      dusk:  new THREE.Color(0xffb070),
-      night: new THREE.Color(0xb6c8ff),
+      dawn:  new THREE.Color(0xffe6c0),
+      day:   new THREE.Color(0xfffae0),
+      dusk:  new THREE.Color(0xffbd80),
+      night: new THREE.Color(0xc8d4ff),
     };
 
     this.timeIdx = 1;
@@ -56,16 +58,18 @@ export class World {
     this.weather = "clear";
 
     this.scene.background = this.skyColors.day.clone();
-    this.scene.fog = new THREE.Fog(this.fogColors.day.getHex(), 25, 70);
+    this.scene.fog = new THREE.Fog(this.fogColors.day.getHex(), 32, 80);
 
     this._buildLights();
     this._buildSkyDome();
     this._buildCelestial();   // visible sun + moon + pink-tinted clouds
-    this._buildMountainRing(); // dark purple horizon silhouettes (V1 aesthetic)
+    this._buildMountainRing(); // pastel rolling hills (modern cute)
     this._buildCenterMountain();// glowing-peaked pyramid in the distance
     this._buildGround();
+    this._buildFenceRing();    // friendly white picket fence around the pen
     this._scatterScenery();
     this._buildStars();
+    this._buildBarn();        // cozy farm dressing visible in CARE view
 
     this.actors = [];
     this.eggs = {};         // id -> { mesh, taps, charDef }
@@ -227,7 +231,8 @@ export class World {
     return tex;
   }
 
-  // V1 PRD: clouds are dusk-pink/coral, not stark white.
+  // Bright pillowy clouds — cream-white core blending into a soft baby-pink
+  // edge. Reads as the kind of cloud a Teletubby would skip across.
   _makeCloudTexture() {
     const size = 512;
     const c = document.createElement("canvas");
@@ -243,9 +248,9 @@ export class World {
     ];
     for (const [x, y, r, alpha] of blobs) {
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0,   `rgba(255,200,194,${alpha})`);
-      g.addColorStop(0.55, `rgba(255,160,164,${alpha * 0.6})`);
-      g.addColorStop(1,   "rgba(255,170,170,0)");
+      g.addColorStop(0,    `rgba(255,255,255,${alpha})`);
+      g.addColorStop(0.55, `rgba(255,232,236,${alpha * 0.7})`);
+      g.addColorStop(1,    "rgba(255,220,228,0)");
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -305,19 +310,221 @@ export class World {
     this.scene.add(peakSprite);
   }
 
-  // Paint a single dark-purple mountain silhouette. Pyramid form for the
-  // centre mountain, rounded ridges for the ring mountains.
+  // Cozy farm dressing for the CARE view — a wooden coop behind Blue, a few
+  // hay bales, a low fence, a warm lantern. All parented to a single group
+  // so setView() can show/hide it in one toggle.
+  _buildBarn() {
+    const barn = new THREE.Group();
+    barn.name = "barn";
+
+    // Wooden plank colors (warm reds/browns) that read in dawn AND night.
+    const plankMat = new THREE.MeshStandardMaterial({ color: 0x8a3a2e, roughness: 0.85 });
+    const darkPlank = new THREE.MeshStandardMaterial({ color: 0x5a241c, roughness: 0.9 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a1612, roughness: 0.85 });
+    const hayMat = new THREE.MeshStandardMaterial({ color: 0xd9a850, roughness: 1 });
+    const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a6b3a, roughness: 1 });
+
+    // --- The coop: a small barn behind Blue (negative Z) ---
+    const coop = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.2, 3.6), plankMat);
+    body.position.y = 1.6;
+    body.castShadow = true; body.receiveShadow = true;
+    coop.add(body);
+    // Pitched roof (two slanted boxes meeting at a ridge).
+    const roofL = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 3.9), roofMat);
+    roofL.position.set(-1.0, 3.6, 0);
+    roofL.rotation.z = Math.PI * 0.18;
+    coop.add(roofL);
+    const roofR = roofL.clone();
+    roofR.position.x = 1.0;
+    roofR.rotation.z = -Math.PI * 0.18;
+    coop.add(roofR);
+    // Door (dark plank rectangle on the front face).
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.08), darkPlank);
+    door.position.set(0, 0.9, 1.82);
+    coop.add(door);
+    // Round window above the door — bright yellow disc (interior lamp glow).
+    const windowGeom = new THREE.CircleGeometry(0.36, 24);
+    const windowMat = new THREE.MeshBasicMaterial({ color: 0xffd57f, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
+    const win = new THREE.Mesh(windowGeom, windowMat);
+    win.position.set(0, 2.4, 1.83);
+    coop.add(win);
+    // Soft point light inside the window, glow at the door.
+    const lamp = new THREE.PointLight(0xffd29a, 0.9, 10, 1.6);
+    lamp.position.set(0, 2.4, 1.4);
+    coop.add(lamp);
+
+    coop.position.set(0, 0, -5.4);
+    barn.add(coop);
+
+    // --- Hay bales, scattered to either side of Blue ---
+    const bale = (x, z, rot) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.1, 16), hayMat);
+      m.rotation.z = Math.PI / 2;
+      m.rotation.y = rot;
+      m.position.set(x, 0.6, z);
+      m.castShadow = true; m.receiveShadow = true;
+      return m;
+    };
+    barn.add(bale(-3.4, -2.6, 0.2));
+    barn.add(bale(-4.2, -1.4, -0.4));
+    barn.add(bale(3.6,  -2.4, 0.6));
+    barn.add(bale(3.0,  2.6,  -0.3));
+
+    // --- Picket fence: short low posts ringing the front of the scene ---
+    const fenceMat = new THREE.MeshStandardMaterial({ color: 0xe7d7b5, roughness: 0.9 });
+    for (let i = -3; i <= 3; i++) {
+      if (Math.abs(i) <= 1) continue; // gap for camera-facing view of Blue
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.95, 0.15), fenceMat);
+      post.position.set(i * 0.9, 0.45, 4.2);
+      post.castShadow = true;
+      barn.add(post);
+    }
+    // Two horizontal fence rails connecting the posts.
+    const rail = (y, x0, x1) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(x1 - x0), 0.08, 0.08), fenceMat);
+      m.position.set((x0 + x1) / 2, y, 4.2);
+      return m;
+    };
+    barn.add(rail(0.65, -2.7, -1.8));
+    barn.add(rail(0.40, -2.7, -1.8));
+    barn.add(rail(0.65,  1.8,  2.7));
+    barn.add(rail(0.40,  1.8,  2.7));
+
+    // --- Soft grass tuft circle around Blue's standing spot ---
+    const tuftGeom = new THREE.ConeGeometry(0.14, 0.55, 4);
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2;
+      const r = 2.4 + Math.random() * 1.2;
+      const tuft = new THREE.Mesh(tuftGeom, grassMat);
+      tuft.position.set(Math.cos(a) * r, 0.28, Math.sin(a) * r);
+      tuft.rotation.y = Math.random() * Math.PI;
+      tuft.scale.y = 0.7 + Math.random() * 0.6;
+      barn.add(tuft);
+    }
+
+    // --- Feed bowl in front of Blue (visual hook for "FEED") ---
+    const bowl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.32, 0.18, 16),
+      new THREE.MeshStandardMaterial({ color: 0x6c4a2a, roughness: 0.7 }),
+    );
+    bowl.position.set(1.4, 0.09, 2.2);
+    bowl.castShadow = true; bowl.receiveShadow = true;
+    barn.add(bowl);
+    const seed = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.36, 0.36, 0.04, 16),
+      new THREE.MeshStandardMaterial({ color: 0xe8c068, roughness: 1 }),
+    );
+    seed.position.set(1.4, 0.20, 2.2);
+    barn.add(seed);
+
+    this.scene.add(barn);
+    this.barn = barn;
+    // Toys Blue can interact with when nobody's watching her. Each entry is
+    // a world position + the kind of interaction (peck = head bob, hop = jump
+    // on it). The behavior loop in _tickBlue cycles through these when she's
+    // in the "playing" state.
+    this.toys = [
+      { pos: new THREE.Vector3(1.4, 0.0, 2.2),   kind: "peck",  label: "bowl" },
+      { pos: new THREE.Vector3(-3.4, 0.0, -2.6), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(-4.2, 0.0, -1.4), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(3.6,  0.0, -2.4), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(3.0,  0.0,  2.6), kind: "hop",   label: "bale" },
+      { pos: new THREE.Vector3(0.0,  0.0, -3.6), kind: "preen", label: "coop" },
+    ];
+    // The "visit spot" — where Blue stands when she's facing the camera in
+    // care view. Slightly in front of center so the camera reads her face on.
+    this.visitSpot = new THREE.Vector3(0, 0, 2.5);
+  }
+
+  // ------------------------------------------------------------------
+  // View modes: "care" (close on Blue, barn dressing visible, prize
+  // creatures + their eggs hidden) and "valley" (pulled back, all prize
+  // creatures + eggs visible, barn group hidden so the wider valley reads).
+  // The frame loop lerps the camera toward this._cameraTarget every tick.
+  // ------------------------------------------------------------------
+  setView(mode, opts = {}) {
+    const changing = this.view !== mode;
+    this.view = mode;
+    const instant = !!opts.instant;
+    if (changing || instant) {
+      if (mode === "care") {
+        // Close, slightly above eye-level, looking at the coop / Blue.
+        this._cameraTarget = {
+          pos:  new THREE.Vector3(0, 2.4, 7.5),
+          look: new THREE.Vector3(0, 1.1, 0),
+        };
+      } else {
+        // Wide valley overview — same vantage as the original boot frame.
+        this._cameraTarget = {
+          pos:  new THREE.Vector3(8, 7, 16),
+          look: new THREE.Vector3(0, 1.0, 0),
+        };
+      }
+      if (instant && this._cameraTarget) {
+        this.camera.position.copy(this._cameraTarget.pos);
+        if (this._orbit) this._orbit.target.copy(this._cameraTarget.look);
+        else this.camera.lookAt(this._cameraTarget.look);
+        this._cameraTarget = null;
+      }
+    }
+    this._applyViewVisibility();
+  }
+
+  _applyViewVisibility() {
+    const mode = this.view;
+    // Barn only visible in care view.
+    if (this.barn) this.barn.visible = (mode === "care");
+    // Hide prize actors + their eggs in care view; restore in valley.
+    const showPrize = (mode !== "care");
+    for (const a of this.actors) {
+      if (a.def.isGateway || a.def.secret) continue; // Blue + Solis always visible
+      a.mesh.visible = showPrize;
+    }
+    for (const id in this.eggs) {
+      const e = this.eggs[id];
+      if (!e || !e.charDef) continue;
+      if (e.charDef.isGateway || e.charDef.secret) continue;
+      if (e.mesh) e.mesh.visible = showPrize;
+    }
+  }
+
+  // Lerp the camera toward this._cameraTarget. Called every frame after
+  // controls.update() so OrbitControls' tweak isn't overwritten when no
+  // target is set (e.g. user is dragging). Returns true if the controls
+  // target needs an update.
+  _animateCamera(dt) {
+    if (!this._cameraTarget) return;
+    const k = 1 - Math.exp(-dt * 0.005); // exponential approach
+    this.camera.position.lerp(this._cameraTarget.pos, k);
+    // OrbitControls drives lookAt via .target — animate that instead of
+    // calling lookAt directly, otherwise the next controls.update() snaps back.
+    if (this._orbit) {
+      this._orbit.target.lerp(this._cameraTarget.look, k);
+    } else {
+      this.camera.lookAt(this._cameraTarget.look);
+    }
+    // Snap + clear once we're close enough.
+    if (this.camera.position.distanceTo(this._cameraTarget.pos) < 0.01) {
+      this.camera.position.copy(this._cameraTarget.pos);
+      if (this._orbit) this._orbit.target.copy(this._cameraTarget.look);
+      this._cameraTarget = null;
+    }
+  }
+
+  // Modern cute hills: sage-blue rolling silhouettes with a creamy snow cap.
+  // Pyramid form for the centre mountain, rounded ridges for the ring mountains.
   _makeMountainTexture(isPyramid = false) {
     const W = 512, H = 384;
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const ctx = c.getContext("2d");
     ctx.clearRect(0, 0, W, H);
-    // Two-stop gradient — dark to darker, makes the silhouette feel solid
-    // but lets the sky show through at the tip.
+    // Two-stop gradient — soft pastel blue-green to deeper sage. Reads as a
+    // friendly distant landscape rather than ominous mountain silhouettes.
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#2a2348");
-    grad.addColorStop(1, "#1a1430");
+    grad.addColorStop(0, "#aac7dc");
+    grad.addColorStop(1, "#7ea8c4");
     ctx.fillStyle = grad;
     ctx.beginPath();
     if (isPyramid) {
@@ -343,11 +550,68 @@ export class World {
     }
     ctx.closePath();
     ctx.fill();
+    // Cream snow cap — a thin sliver across the top contour so the hill
+    // feels lived-in rather than as a flat silhouette.
+    ctx.globalCompositeOperation = "source-atop";
+    ctx.fillStyle = "rgba(252, 246, 235, 0.85)";
+    ctx.beginPath();
+    if (isPyramid) {
+      ctx.moveTo(W / 2, 24);
+      ctx.lineTo(W / 2 + 60, 90);
+      ctx.lineTo(W / 2 - 60, 90);
+    } else {
+      ctx.moveTo(40, H * 0.32);
+      ctx.bezierCurveTo(W * 0.25, H * 0.10, W * 0.75, H * 0.10, W - 40, H * 0.32);
+      ctx.bezierCurveTo(W * 0.75, H * 0.20, W * 0.25, H * 0.20, 40, H * 0.32);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalCompositeOperation = "source-over";
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     return tex;
+  }
+
+  // White picket fence ring — friendly farm-pen marker around the play area.
+  // Cheaper than per-plank meshes: one tall thin plank with a pointed top,
+  // duplicated around a circle with InstancedMesh-like position scatter.
+  _buildFenceRing() {
+    const RADIUS = 25;
+    const COUNT = 56;
+    const plankGeom = new THREE.BoxGeometry(0.16, 1.0, 0.06);
+    const plankMat = new THREE.MeshStandardMaterial({
+      color: 0xfaf3e0, roughness: 0.7, metalness: 0.02, flatShading: true,
+    });
+    const pointGeom = new THREE.ConeGeometry(0.12, 0.22, 4);
+    const railGeom = new THREE.BoxGeometry(2.9, 0.08, 0.05);
+    const railMat = plankMat;
+    const group = new THREE.Group();
+    for (let i = 0; i < COUNT; i++) {
+      const ang = (i / COUNT) * Math.PI * 2;
+      const x = Math.cos(ang) * RADIUS;
+      const z = Math.sin(ang) * RADIUS;
+      const plank = new THREE.Mesh(plankGeom, plankMat);
+      plank.position.set(x, 0.5, z);
+      plank.castShadow = true;
+      plank.receiveShadow = true;
+      const point = new THREE.Mesh(pointGeom, plankMat);
+      point.position.set(x, 1.1, z);
+      plank.rotation.y = -ang;
+      point.rotation.y = -ang;
+      group.add(plank, point);
+      // Horizontal rail every 4th plank (links them visually without paying
+      // for one rail per gap).
+      if (i % 4 === 0) {
+        const rail = new THREE.Mesh(railGeom, railMat);
+        rail.position.set(x, 0.7, z);
+        rail.rotation.y = -ang + Math.PI / 2;
+        group.add(rail);
+      }
+    }
+    this.fenceRing = group;
+    this.scene.add(group);
   }
 
   // (Old _makeFenceTexture kept as a stub for callers, but unused now.)
@@ -460,52 +724,50 @@ export class World {
     this.scene.add(pond);
   }
 
-  // Draw a brush-stroke ground onto an offscreen canvas. V1 PRD palette: a
-  // dark-purple-grey plain with scattered painterly flower tufts + tiny
-  // vertical grass blades. No large green washes — V1's ground reads as
-  // night-dusk-tinted earth rather than a green meadow.
+  // Modern cute ground: a cheerful pastel-green meadow with cream
+  // dirt patches, candy-colored wildflower tufts, and short grass strokes.
+  // The radial highlight sits a touch lighter than the rim so the pen reads
+  // as a "soft hill" that lifts toward the centre — Teletubby-grass energy.
   _makePaintedGroundTexture() {
     const size = 1024;
     const c = document.createElement("canvas");
     c.width = c.height = size;
     const ctx = c.getContext("2d");
-    // Base wash — dark purple-grey with a subtle radial highlight to suggest
-    // a soft pool of light in the centre.
-    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.55);
-    grad.addColorStop(0, "#3a3551");
-    grad.addColorStop(1, "#1f1a30");
+    // Base wash — bright pastel green, slightly lighter in the centre.
+    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.6);
+    grad.addColorStop(0, "#c8eea0");
+    grad.addColorStop(1, "#8ec96b");
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
-    // Subtle darker speckles — texture variation, no big shapes.
-    ctx.globalAlpha = 0.15;
-    for (let i = 0; i < 600; i++) {
-      ctx.fillStyle = Math.random() < 0.5 ? "#2a2540" : "#4a3f60";
+    // Soft cream "dirt" patches — wide, low-opacity blots so the meadow has
+    // visual variety without going muddy.
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 70; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? "#f7eccd" : "#e8d8a8";
       const x = Math.random() * size, y = Math.random() * size;
-      const r = 3 + Math.random() * 8;
+      const r = 18 + Math.random() * 36;
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
-    // Tiny vertical grass blades — pairs of thin lines coming up from a base
-    // point. Matches the V1 tufts visible on the dusk ground.
+    // Bright grass tufts — pairs of thin upward strokes in fresh greens.
     ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.2;
-    const grassColors = ["#5a8a3a", "#79a655", "#6fb46a", "#4e7a36", "#7ab472"];
-    for (let i = 0; i < 380; i++) {
+    ctx.lineWidth = 1.4;
+    const grassColors = ["#6fc04a", "#8cd66a", "#4fa83a", "#a0e07a", "#5fb840"];
+    for (let i = 0; i < 520; i++) {
       ctx.strokeStyle = grassColors[Math.floor(Math.random() * grassColors.length)];
       const bx = Math.random() * size, by = Math.random() * size;
-      const h = 4 + Math.random() * 8;
+      const h = 5 + Math.random() * 10;
       ctx.beginPath();
       ctx.moveTo(bx, by); ctx.lineTo(bx - 1, by - h);
       ctx.moveTo(bx, by); ctx.lineTo(bx + 1, by - h);
       ctx.stroke();
     }
-    // Painterly flower tufts — small pastel petal clusters scattered across
-    // the plain. Match V1's pink/yellow/white wildflower vocabulary.
-    ctx.globalAlpha = 0.9;
-    const flowers = ["#ffd1e8", "#ffe26a", "#bba2ff", "#ffac6b", "#ffffff", "#ff8aae", "#9be3ff"];
-    for (let i = 0; i < 320; i++) {
+    // Candy wildflower clusters — pastel petal rosettes in pink/yellow/blue.
+    ctx.globalAlpha = 0.95;
+    const flowers = ["#ffb6d6", "#ffe26a", "#a3c8ff", "#ffac6b", "#ffffff", "#ff8aae", "#c4a8ff"];
+    for (let i = 0; i < 380; i++) {
       ctx.fillStyle = flowers[Math.floor(Math.random() * flowers.length)];
       const cx = Math.random() * size, cy = Math.random() * size;
-      const r = 1.4 + Math.random() * 1.8;
+      const r = 1.6 + Math.random() * 2.0;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
       const petals = 4;
       for (let p = 0; p < petals; p++) {
@@ -1083,6 +1345,10 @@ export class World {
     label.userData.eggRef = wrap;
     wrap.add(label);
 
+    // Care view shows only Blue's egg + Solis's; prize eggs hide until valley.
+    if (this.view === "care" && !charDef.isGateway && !charDef.secret) {
+      wrap.visible = false;
+    }
     this.scene.add(wrap);
     this.eggs[charDef.id] = {
       mesh: wrap, taps: 0, charDef,
@@ -1186,10 +1452,165 @@ export class World {
       mood: "curious",
       lastSpecial: 0,
       born: performance.now(),
+      idlePhase: rand(0, Math.PI * 2),     // teletubby-style breathing offset
+      lastEmote: 0,
+      lastSocialAt: performance.now() + rand(4000, 12000), // Sims social cooldown
     };
+    // Cache the base scale so the idle "breath" wiggle multiplies against it
+    // rather than overwriting (procedural meshes are pre-scaled by 2× the
+    // spriteScale; sprite-actors keep their own internal sprite.scale).
+    actor.baseScale = mesh.scale.x;
+    this._buildMoodPlumbob(actor);
     this.actors.push(actor);
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
+    // Respect the current view mode — a prize actor hatching during care view
+    // shouldn't pop into the close-up; it'll appear when the user switches.
+    if (this.view === "care" && !charDef.isGateway && !charDef.secret) {
+      mesh.visible = false;
+    }
     return actor;
+  }
+
+  // Sims-style mood plumbob — a small floating diamond above the actor whose
+  // color reflects their mood. Attached to the actor's mesh so it follows
+  // every position change for free. Per-tick we update the color + bob.
+  _buildMoodPlumbob(actor) {
+    const group = new THREE.Group();
+    group.name = "plumbob";
+    const geom = new THREE.OctahedronGeometry(0.36, 0);
+    geom.scale(1.0, 1.7, 1.0);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xa0ff5a,
+      transparent: true,
+      opacity: 0.98,
+      depthWrite: false,
+      depthTest: false,           // Sims plumbobs always pop through
+    });
+    const diamond = new THREE.Mesh(geom, mat);
+    diamond.name = "plumbobDiamond";
+    diamond.renderOrder = 999;
+    group.add(diamond);
+    // Soft halo behind the diamond for the Sims glow.
+    const haloMat = new THREE.SpriteMaterial({
+      map: this._makeDiscTexture(128, ["#a0ff5a", "#a0ff5a", "rgba(160,255,90,0)"]),
+      transparent: true, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const halo = new THREE.Sprite(haloMat);
+    halo.scale.setScalar(1.6);
+    halo.name = "plumbobHalo";
+    halo.renderOrder = 998;
+    group.add(halo);
+    // Position above the actor's head. The mesh is pre-scaled (procedural
+    // meshes are 4–7× larger than their built geometry), so we put the plumbob
+    // a generous distance above and counter-scale the whole group to keep it
+    // a consistent world-space size on every character.
+    const def = actor.def;
+    const baseScale = actor.baseScale || 1.0;
+    // World-space target offset above the actor's apparent crown.
+    const worldOff = def.flying ? 4.0 : def.floating ? 3.0 : 3.2;
+    group.position.y = worldOff / baseScale;
+    group.scale.setScalar(1 / Math.max(0.001, baseScale));
+    actor.mesh.add(group);
+    actor.plumbob = group;
+    actor.plumbobDiamond = diamond;
+    actor.plumbobHalo = halo;
+  }
+
+  // Map a mood to a plumbob color. Joy is the primary driver; specific moods
+  // can override (e.g. "scared" → red even if joy is high momentarily).
+  _moodColor(actor) {
+    if (actor.mood === "scared")  return 0xff5a6e;
+    if (actor.mood === "cold")    return 0x9ad4ff;
+    if (actor.mood === "radiant") return 0xa0ff5a;
+    if (actor.joy > 0.75)         return 0x8df36c;
+    if (actor.joy > 0.45)         return 0xffe26a;
+    if (actor.joy > 0.20)         return 0xffac6b;
+    return 0xff7a8c;
+  }
+
+  // Sims-style thought bubble: spawn a small canvas-rendered emoji sprite
+  // above an actor's head, float it up, and fade it out. Idempotent (cheap
+  // to call from any reactTo / petActor / social interaction).
+  emoteActor(actor, emoji, durMs = 1600) {
+    if (!actor || !actor.mesh) return;
+    const now = performance.now();
+    if (now - (actor.lastEmote || 0) < 250) return; // throttle
+    actor.lastEmote = now;
+    const tex = this._emojiTextureCache?.[emoji] || this._makeEmojiTexture(emoji);
+    (this._emojiTextureCache ||= {})[emoji] = tex;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthWrite: false, depthTest: false, opacity: 1.0,
+    }));
+    sprite.renderOrder = 1000;
+    const def = actor.def;
+    const base = actor.baseScale || 1.0;
+    const yStart = (def.flying ? 5.0 : def.floating ? 4.0 : 4.2) / base;
+    const baseSize = 1.6 / base;
+    sprite.scale.setScalar(baseSize);
+    sprite.position.set(0, yStart, 0);
+    actor.mesh.add(sprite);
+    const tStart = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - tStart) / durMs);
+      sprite.position.y = yStart + t * (0.8 / base);
+      sprite.material.opacity = 1 - Math.pow(t, 2);
+      sprite.scale.setScalar(baseSize * (1 + t * 0.33));
+      if (t < 1) requestAnimationFrame(step);
+      else actor.mesh.remove(sprite);
+    };
+    requestAnimationFrame(step);
+  }
+
+  _makeEmojiTexture(emoji) {
+    const size = 128;
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, size, size);
+    // Background tint per emotion so the bubble reads at a glance even when
+    // the emoji glyph itself doesn't render (some environments lack the
+    // colored-emoji font). Falls back to soft white.
+    const tints = {
+      "💖": "#ffe1eb", "💗": "#ffe1eb", "❤️": "#ffe1eb",
+      "🛸": "#e3eaff", "👋": "#ffeacc",
+      "😨": "#ffd9d9", "🥶": "#dff0ff",
+      "❄️": "#eaf6ff", "🌷": "#ffe3ef", "✨": "#fff8c8",
+      "⭐": "#fff5b3", "🌑": "#d9d6f0", "🌈": "#ffd9eb",
+      "💧": "#cfe7ff", "💭": "#f0f0f0", "🔥": "#ffd5b3",
+    };
+    const tint = tints[emoji] || "#ffffff";
+    // Speech-bubble backdrop — tinted rounded rectangle with a downward tail.
+    ctx.fillStyle = tint;
+    ctx.strokeStyle = "rgba(60,40,30,0.45)";
+    ctx.lineWidth = 3;
+    const r = 22;
+    ctx.beginPath();
+    ctx.moveTo(r + 6, 6);
+    ctx.lineTo(size - 6 - r, 6);
+    ctx.quadraticCurveTo(size - 6, 6, size - 6, 6 + r);
+    ctx.lineTo(size - 6, size - 18 - r);
+    ctx.quadraticCurveTo(size - 6, size - 18, size - 6 - r, size - 18);
+    ctx.lineTo(size / 2 + 8, size - 18);
+    ctx.lineTo(size / 2, size - 4);
+    ctx.lineTo(size / 2 - 8, size - 18);
+    ctx.lineTo(6 + r, size - 18);
+    ctx.quadraticCurveTo(6, size - 18, 6, size - 18 - r);
+    ctx.lineTo(6, 6 + r);
+    ctx.quadraticCurveTo(6, 6, 6 + r, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = "72px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#111";
+    ctx.fillText(emoji, size / 2, size / 2 - 6);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    return tex;
   }
 
   rebuildActor(actor) {
@@ -1315,6 +1736,9 @@ export class World {
 
     // Actor wander.
     for (const a of this.actors) this._tickActor(a, dt);
+    // Sims-style autonomous social interactions — picks pairs at random and
+    // sends them toward each other for a brief hello.
+    this._tickSocial(now);
 
     // Per-event updaters (snow particles, etc.)
     for (let i = this.updaters.length - 1; i >= 0; i--) {
@@ -1322,9 +1746,53 @@ export class World {
     }
   }
 
+  // Periodically schedule a social interaction between two random actors.
+  // When their cooldown is up, head them toward each other; when they collide,
+  // both pulse and share a heart emoji. Bumps joy on both.
+  _tickSocial(now) {
+    if (this.actors.length < 2) return;
+    for (const a of this.actors) {
+      if (a._socialTarget) {
+        const t = a._socialTarget;
+        if (!this.actors.includes(t)) { a._socialTarget = null; continue; }
+        const d = a.mesh.position.distanceTo(t.mesh.position);
+        if (d < 1.8) {
+          // Met! Both react.
+          this.hopActor(a, 0.4, 350);
+          this.hopActor(t, 0.4, 350);
+          this.emoteActor(a, "💗", 1200);
+          this.emoteActor(t, "💗", 1200);
+          a.joy = Math.min(1, a.joy + 0.04);
+          t.joy = Math.min(1, t.joy + 0.04);
+          a._socialTarget = null;
+          a.lastSocialAt = now + rand(15000, 35000);
+          t.lastSocialAt = now + rand(15000, 35000);
+        } else if (!a.def.flying && !a.def.floating) {
+          a.heading = Math.atan2(
+            t.mesh.position.z - a.mesh.position.z,
+            t.mesh.position.x - a.mesh.position.x
+          );
+        }
+        continue;
+      }
+      if (now < (a.lastSocialAt || 0)) continue;
+      // Pick a peer: prefer ground walkers (flyers/floaters wander too high
+      // to "meet"). Skip if a partner is already locked into a chat.
+      const peers = this.actors.filter(p => p !== a && !p._socialTarget && !p.def.flying && !p.def.floating);
+      if (peers.length === 0) { a.lastSocialAt = now + rand(8000, 18000); continue; }
+      if (a.def.flying || a.def.floating) { a.lastSocialAt = now + rand(8000, 18000); continue; }
+      const peer = peers[Math.floor(Math.random() * peers.length)];
+      a._socialTarget = peer;
+    }
+  }
+
   _tickActor(actor, dt) {
     const def = actor.def;
     const m = actor.mesh;
+    // Blue gets her own behavior state machine: visits the camera in CARE
+    // view, plays with the coop toys (peck the bowl, hop on bales) when
+    // left alone (VALLEY view, or after enough idle seconds in CARE).
+    if (def.isGateway && this._tickBlue(actor, dt)) return;
     // Wander within the ground disc.
     const speed = def.id === "magma" && actor._dashUntil > performance.now() ? 8 : 1.2;
     actor.heading += rand(-0.02, 0.02);
@@ -1356,6 +1824,29 @@ export class World {
     // visual effect anyway, so we just skip the work.
     if (!isSprite) m.rotation.y = -actor.heading + Math.PI / 2;
 
+    // Teletubby-style idle: gentle vertical "breathing" scale + tiny squash.
+    // Multiplied against the actor's cached base scale so procedural meshes
+    // (pre-scaled at spawn) don't shrink to unit size each frame.
+    if (!def.flying && !def.floating) {
+      const base = actor.baseScale || 1.0;
+      const breath = 1.0 + Math.sin(performance.now() * 0.003 + actor.idlePhase) * 0.04;
+      m.scale.y = base * breath;
+      m.scale.x = m.scale.z = base * (1.0 + (breath - 1.0) * -0.35);
+    }
+
+    // Sims-style plumbob: bob + spin slowly, color-map to mood/joy. Position
+    // expressed in the actor mesh's *local* (pre-scale) coordinates.
+    if (actor.plumbob) {
+      const base = actor.baseScale || 1.0;
+      const worldOff = def.flying ? 4.0 : def.floating ? 3.0 : 3.2;
+      actor.plumbob.position.y = (worldOff / base) + Math.sin(performance.now() * 0.0025 + actor.idlePhase) * 0.06;
+      actor.plumbobDiamond.rotation.y += dt * 0.0018;
+      const targetColor = this._moodColor(actor);
+      actor.plumbobDiamond.material.color.lerp(new THREE.Color(targetColor), 0.06);
+      actor.plumbobHalo.material.color.lerp(new THREE.Color(targetColor), 0.06);
+      actor.plumbobHalo.material.opacity = 0.5 + 0.25 * Math.sin(performance.now() * 0.004);
+    }
+
     // Joy ticks up; faster in preferred time.
     const tname = this.timeName();
     const pref = def.prefersTime;
@@ -1371,6 +1862,150 @@ export class World {
     if (def.id === "whisper" && tname === "night" && Math.random() < 0.0004) this.teleportActor(actor, null);
 
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
+  }
+
+  // ------------------------------------------------------------------
+  // Blue's behavior state machine — runs only for her, replaces the
+  // generic wander. Two states:
+  //   visiting → walk to this.visitSpot, face the camera, idle there.
+  //   playing  → cycle through this.toys (peck the feed bowl, hop on a
+  //              hay bale, preen near the coop) when she's left alone.
+  // CARE view + recent attention pulse keeps her visiting; long idle in
+  // CARE or any time in VALLEY moves her to playing.
+  // ------------------------------------------------------------------
+  _tickBlue(actor, dt) {
+    if (!this.toys || !this.visitSpot) return false; // barn not built yet
+    const m = actor.mesh;
+    const now = performance.now();
+    actor._blue = actor._blue || {
+      mode: "visiting",
+      toyIdx: 0,
+      arrivedAt: 0,
+      lingerMs: 1800,
+      attentionUntil: now + 6000, // start out attentive (player just opened the app)
+    };
+    const s = actor._blue;
+
+    // Decide the desired mode. Recent attention OR being in care view biases
+    // her toward visiting; valley view OR long idle in care moves her to play.
+    const attentive = now < s.attentionUntil;
+    const wantsVisit = (this.view === "care") && attentive;
+    const desiredMode = wantsVisit ? "visiting" : "playing";
+    if (desiredMode !== s.mode) {
+      s.mode = desiredMode;
+      s.arrivedAt = 0;
+      // Pick a fresh toy each time she enters playing — keeps her moving.
+      if (s.mode === "playing") s.toyIdx = Math.floor(Math.random() * this.toys.length);
+    }
+
+    // Choose a target position for this frame.
+    const target = (s.mode === "visiting")
+      ? this.visitSpot
+      : this.toys[s.toyIdx].pos;
+    const dx = target.x - m.position.x;
+    const dz = target.z - m.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    // Walk speed scales with how far she has to go; she slows on arrival.
+    const speed = dist > 2 ? 2.2 : dist > 0.5 ? 1.4 : 0;
+    if (speed > 0) {
+      const ang = Math.atan2(dz, dx);
+      actor.heading = ang;
+      m.position.x += Math.cos(ang) * speed * dt / 1000;
+      m.position.z += Math.sin(ang) * speed * dt / 1000;
+    }
+
+    // On arrival: do the action for this state.
+    if (dist <= 0.5) {
+      if (s.arrivedAt === 0) {
+        s.arrivedAt = now;
+        if (s.mode === "visiting") {
+          // Face the camera so she "looks at" the player.
+          actor.heading = Math.atan2(
+            this.camera.position.z - m.position.z,
+            this.camera.position.x - m.position.x
+          );
+          this._blueGreet(actor);
+        } else {
+          // Toy interaction: peck / hop / preen.
+          this._blueToyInteract(actor, this.toys[s.toyIdx]);
+          s.lingerMs = 1800 + Math.random() * 1500;
+        }
+      } else if (now - s.arrivedAt > s.lingerMs && s.mode === "playing") {
+        // Move to the next toy.
+        s.toyIdx = (s.toyIdx + Math.floor(1 + Math.random() * (this.toys.length - 1))) % this.toys.length;
+        s.arrivedAt = 0;
+      } else if (s.mode === "visiting" && now - s.arrivedAt > 3000) {
+        // Subtle head re-aim every few seconds so she doesn't look frozen.
+        actor.heading = Math.atan2(
+          this.camera.position.z - m.position.z,
+          this.camera.position.x - m.position.x
+        ) + (Math.random() - 0.5) * 0.4;
+        s.arrivedAt = now;
+      }
+    }
+
+    // Vertical bob — taller when visiting (alert), gentler when playing.
+    const bobAmp = (s.mode === "visiting" && dist <= 0.5) ? 0.05 : 0.08;
+    m.position.y = 0.6 + Math.abs(Math.sin(now * 0.005 + actor.born * 0.0002)) * bobAmp;
+    m.rotation.y = -actor.heading + Math.PI / 2;
+
+    // Pulse her LEDs — chest disc + antenna bulb breathe slowly while
+    // visiting, flicker rapidly while pecking/playing. userData is set
+    // directly on the buildBody() group, which IS actor.mesh.
+    const led = m.userData && m.userData.led;
+    const bulb = m.userData && m.userData.antennaBulb;
+    if (led || bulb) {
+      const speedHz = s.mode === "visiting" ? 0.001 : 0.003;
+      const pulse = 0.7 + Math.sin(now * speedHz) * 0.3;
+      if (led && led.material) led.material.opacity = pulse;
+      if (bulb && bulb.material) bulb.material.opacity = pulse;
+    }
+
+    // Joy still ticks up while she's well-cared-for (matches the generic path).
+    const tname = this.timeName();
+    const pref = actor.def.prefersTime;
+    const joyRate = (pref === "any" || pref === tname) ? 0.00004 : 0.00002;
+    actor.joy = Math.min(1, actor.joy + dt * joyRate);
+
+    if (this.focus && this.focus.id === actor.id) this._refreshInspector();
+    return true; // we handled this actor
+  }
+
+  // Called when a care action fires — pulls Blue back to the visit spot so
+  // she "comes to see you" after a pet/feed/play.
+  attendToBlue(durMs = 6000) {
+    const blue = this.actors.find((a) => a.def && a.def.isGateway);
+    if (!blue) return;
+    blue._blue = blue._blue || { mode: "visiting", toyIdx: 0, arrivedAt: 0, lingerMs: 1800, attentionUntil: 0 };
+    blue._blue.attentionUntil = performance.now() + durMs;
+  }
+
+  _blueGreet(actor) {
+    // Soft cluck on arrival, but don't spam if she only just clucked.
+    const now = performance.now();
+    if (now - (actor._lastCluck || 0) > 4500) {
+      actor._lastCluck = now;
+      if (this.audio && this.audio.cluck) this.audio.cluck();
+    }
+  }
+
+  _blueToyInteract(actor, toy) {
+    // Hop / peck / preen visual reaction.
+    if (toy.kind === "peck") {
+      // Three rapid head-bob hops, low to the ground — pecks at the feed bowl.
+      this.hopActor(actor, -0.1, 200);
+      setTimeout(() => this.hopActor(actor, -0.1, 200), 240);
+      setTimeout(() => this.hopActor(actor, -0.1, 200), 480);
+      if (this.audio && this.audio.tap) this.audio.tap();
+    } else if (toy.kind === "hop") {
+      // Big hop up onto the hay bale.
+      this.hopActor(actor, 0.7, 500);
+      if (this.audio && this.audio.tap) this.audio.tap();
+    } else {
+      // Preen / settle — a calm half-hop.
+      this.hopActor(actor, 0.25, 600);
+    }
   }
 
   // ---- helpers used by specials/events ------------------------------------
@@ -1400,12 +2035,25 @@ export class World {
 
   petActor(actor) {
     actor.joy = Math.min(1, actor.joy + 0.08);
-    // little bounce
+    this.hopActor(actor, 0.4, 400);
+    // Furby-style "love me" feedback: heart bubble + cluck (when the actor
+    // is the chicken; everyone else gets the regular pet blip).
+    this.emoteActor(actor, "💖", 1400);
+    if (this.audio) {
+      if (actor.id === "bluechicken" && this.audio.cluck) this.audio.cluck();
+      else this.audio.pet?.();
+    }
+  }
+
+  // Visible bounce-on-the-spot. Used by petActor and by reactTo() in characters
+  // who want a tactile little reaction (hop in joy, hop in surprise) — works for
+  // both procedural-mesh and sprite-billboard actors since we only mutate y.
+  hopActor(actor, height = 0.4, dur = 400) {
     const baseY = actor.mesh.position.y;
     const tStart = performance.now();
     const step = () => {
-      const t = Math.min(1, (performance.now() - tStart) / 400);
-      actor.mesh.position.y = baseY + Math.sin(t * Math.PI) * 0.4;
+      const t = Math.min(1, (performance.now() - tStart) / dur);
+      actor.mesh.position.y = baseY + Math.sin(t * Math.PI) * height;
       if (t < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);

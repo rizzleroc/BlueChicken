@@ -467,6 +467,9 @@ const winterSequence = {
     world.scene.add(snow);
     if (world.audio) world.audio.snowfall();
     world.setWeather("snowing");
+    // Sub-event broadcast: hatchlings whose reactTo() checks for "snowfall"
+    // get their cue once the flakes are actually visible.
+    world.broadcastEvent("snowfall");
 
     // After a while, build a few igloos.
     await wait(8000);
@@ -519,6 +522,9 @@ const winterSequence = {
     await wait(6000);
     if (world.audio) world.audio.thaw();
     world.toast("The thaw begins.");
+    // Sub-event broadcast: hatchlings who hate the cold get the "we're warming
+    // back up" cue now, so their reactTo() can fire celebrations.
+    world.broadcastEvent("thaw");
     // Fade snow out
     snow.userData.fading = true;
     await wait(4500);
@@ -976,5 +982,10 @@ export class EventDirector {
   run(specialId, args) {
     const fn = this.specials[specialId];
     if (fn) fn(this.world, args || {});
+    // Broadcast the special id so peers can react in character — Blue cheers
+    // her flock, etc. Wrapped in try-catch defensively; one bad reactTo()
+    // shouldn't kill the special's visual.
+    try { this.world.broadcastEvent(specialId); }
+    catch (e) { console.warn("broadcast for special", specialId, "failed:", e); }
   }
 }

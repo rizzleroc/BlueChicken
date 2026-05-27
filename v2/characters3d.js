@@ -79,6 +79,10 @@ const bluechicken = {
   id: "bluechicken",
   portrait: "docs/portraits/bluechicken.png",
   spriteScale: 2.4,
+  // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
+  // bump (= 4.8) made her tower over the care-view camera frame. 1.8 puts
+  // her at a Tamagotchi-pet height in the cozy close-up.
+  proceduralScale: 1.8,
   name: "Blue",
   role: "Hatchling Keeper",
   story: "Blue hatched first, fluffed up, and waited. The valley has been ready for her ever since. Care for her well and the world will come.",
@@ -101,37 +105,110 @@ const bluechicken = {
   },
   buildBody() {
     const g = new THREE.Group();
-    // round fluffy body
-    const body = meshOf(new THREE.SphereGeometry(0.45, 16, 12), std(this.palette.body));
+    // --- ROBOT-CHICKEN body --------------------------------------------------
+    // Slightly metallic blue chassis with a pulsing chest LED, brass beak, an
+    // antenna, and tiny rivets along the seam — same affectionate-robot read
+    // as the V1 portrait, just sculpted in 3D. References on the group so the
+    // world tick can pulse the LED/antenna.
+    const chassis = new THREE.MeshStandardMaterial({
+      color: this.palette.body,
+      roughness: 0.4,
+      metalness: 0.55,
+    });
+    const bellyMat = new THREE.MeshStandardMaterial({
+      color: this.palette.belly,
+      roughness: 0.55,
+      metalness: 0.3,
+    });
+    const brassMat = new THREE.MeshStandardMaterial({
+      color: this.palette.accent,
+      roughness: 0.45,
+      metalness: 0.7,
+    });
+
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 14), chassis);
     body.scale.set(1, 0.95, 1);
     g.add(body);
-    const belly = meshOf(new THREE.SphereGeometry(0.32, 14, 10), std(this.palette.belly));
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.32, 16, 12), bellyMat);
     belly.position.set(0, -0.05, 0.12);
     g.add(belly);
-    // crown tuft
-    const tuft = meshOf(new THREE.ConeGeometry(0.1, 0.22, 5), std(this.palette.body));
-    tuft.position.set(0.05, 0.5, 0);
-    tuft.rotation.z = -0.2;
-    g.add(tuft);
-    // wings
+
+    // Seam ring around the body — five tiny rivets along the equator.
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 5), brassMat);
+      rivet.position.set(Math.cos(a) * 0.44, 0.02, Math.sin(a) * 0.44);
+      g.add(rivet);
+    }
+
+    // Chest LED — a small additive disc that the tick loop pulses.
+    const ledMat = new THREE.MeshBasicMaterial({
+      color: 0xffd57f,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const led = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), ledMat);
+    led.position.set(0.42, 0.04, 0.0);
+    led.rotation.y = Math.PI / 2;
+    g.add(led);
+    g.userData.led = led; // tick loop pulses this
+
+    // Crown tuft — repurposed as a small antenna with a glowing ball on top.
+    const antennaStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.22, 6),
+      brassMat,
+    );
+    antennaStem.position.set(0.05, 0.55, 0);
+    g.add(antennaStem);
+    const antennaBulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffd57f, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    antennaBulb.position.set(0.05, 0.7, 0);
+    g.add(antennaBulb);
+    g.userData.antennaBulb = antennaBulb;
+
+    // Wings — slightly angled plates so they read as articulated panels.
     for (const z of [0.32, -0.32]) {
-      const w = meshOf(new THREE.BoxGeometry(0.1, 0.05, 0.28), std(this.palette.body));
-      w.position.set(0, 0, z);
+      const w = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.32), chassis);
+      w.position.set(-0.02, 0.0, z);
+      w.rotation.z = z > 0 ? -0.12 : 0.12;
       g.add(w);
     }
-    // beak
-    const beak = meshOf(new THREE.ConeGeometry(0.07, 0.16, 5), std(this.palette.accent));
+
+    // Brass beak.
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 6), brassMat);
     beak.rotation.z = -Math.PI / 2;
-    beak.position.set(0.4, -0.02, 0);
+    beak.position.set(0.42, -0.02, 0);
     g.add(beak);
-    g.add(makeEye(0.05, [0.28, 0.12, 0.13]));
-    g.add(makeEye(0.05, [0.28, 0.12, -0.13]));
-    // legs
+
+    // Camera-eye LEDs — black sclera + glowing dot inside.
+    const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.3, metalness: 0.6 });
+    const eyeGlowMat = new THREE.MeshBasicMaterial({ color: 0xb8e4ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (const z of [0.13, -0.13]) {
+      const socket = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), eyeSocketMat);
+      socket.position.set(0.30, 0.12, z);
+      g.add(socket);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), eyeGlowMat);
+      glow.position.set(0.36, 0.13, z);
+      g.add(glow);
+    }
+
+    // Legs — brass cylinders + tiny foot pads.
     for (const z of [0.1, -0.1]) {
-      const leg = meshOf(new THREE.CylinderGeometry(0.025, 0.025, 0.22, 5), std(0xff8a2a));
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.22, 6), brassMat);
       leg.position.set(0, -0.4, z);
       g.add(leg);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.1), brassMat);
+      foot.position.set(0.02, -0.52, z);
+      g.add(foot);
     }
+
+    // The whole rig casts/receives shadows so she reads as a solid object
+    // sitting on the coop floor.
+    g.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
     return g;
   },
   specialLabel: "Sing a soft song",
@@ -143,11 +220,143 @@ const bluechicken = {
     for (const a of world.actors) a.joy = Math.min(1, a.joy + 0.05);
   },
   reactTo(eventId, world, self) {
-    // Blue is calm and warm to everything — gentle little joy bumps.
-    if (eventId === "ufo" || eventId === "auroraBorealis" || eventId === "meteor") {
-      self.joy = Math.min(1, self.joy + 0.04);
+    // Blue is the keeper. She greets every visitor in character — a calm hop,
+    // a gentle bow, a quiet vigil — so the world never passes her unnoticed.
+    // The "blue/<event>" flag gates the journal line so her log doesn't spam,
+    // but the visible reaction (hop / joy / heading / cluck) fires every time.
+    const once = (flag) => {
+      if (world.hasFlag(flag)) return false;
+      world.flagSeen(flag);
+      return true;
+    };
+    const cluck = () => { if (world.audio && world.audio.cluck) world.audio.cluck(); };
+    const emote = (emoji) => { if (world.emoteActor) world.emoteActor(self, emoji); };
+    // Aim Blue's heading toward another actor she wants to be near (huddle).
+    // Returns true if she found one; false if she's the only one out.
+    const turnToNearestPeer = () => {
+      let best = null, bestD = Infinity;
+      for (const a of world.actors) {
+        if (a.id === self.id) continue;
+        const d = a.mesh.position.distanceTo(self.mesh.position);
+        if (d < bestD) { best = a; bestD = d; }
+      }
+      if (!best) return false;
+      self.heading = Math.atan2(
+        best.mesh.position.z - self.mesh.position.z,
+        best.mesh.position.x - self.mesh.position.x
+      );
+      return true;
+    };
+    switch (eventId) {
+      // ---- scheduled visitors / weather ----
+      case "ufo":
+        cluck();
+        emote("🛸");
+        world.hopActor(self, 0.45, 500);
+        self.joy = Math.min(1, self.joy + 0.05);
+        if (once("blue/ufo")) world.discover(self.id, "Watched a UFO drift overhead.");
+        break;
+      case "firstContact":
+        // A small bow toward the visitor: dip down then rise. She walks
+        // toward the nearest peer afterward so the visitor finds the flock.
+        cluck();
+        emote("👋");
+        world.hopActor(self, -0.15, 700);
+        turnToNearestPeer();
+        self.joy = Math.min(1, self.joy + 0.10);
+        if (once("blue/firstContact")) world.discover(self.id, "Bowed to the visitor from the stars.");
+        break;
+      case "wolf":
+        // Crouch low, point away from the valley's edge, and stay quiet.
+        emote("😨");
+        self.mood = "scared";
+        self.joy = Math.max(0, self.joy - 0.04);
+        self.heading = Math.atan2(-self.mesh.position.z, -self.mesh.position.x);
+        if (once("blue/wolf")) world.discover(self.id, "Hid still until the wolf passed.");
+        break;
+      case "winter":
+        // Fluffs up and heads toward another hatchling — the warm spot others
+        // gather around. Huddle is the visible behavior here.
+        emote("🥶");
+        self.mood = "cold";
+        self.joy = Math.max(0, self.joy - 0.02);
+        turnToNearestPeer();
+        if (once("blue/winter")) world.discover(self.id, "Fluffed up against the chill.");
+        break;
+      case "snowfall":
+        // Hop in the snow and leave a tiny pale footprint trail.
+        cluck();
+        emote("❄️");
+        world.hopActor(self, 0.35, 450);
+        self.joy = Math.min(1, self.joy + 0.05);
+        for (let i = 0; i < 3; i++) {
+          setTimeout(() => world.spawnFootprint(self.mesh.position, 0xcfe4f5), i * 140);
+        }
+        if (once("blue/snowfall")) world.discover(self.id, "Made tiny footprints in the snow.");
+        break;
+      case "thaw":
+        // Celebratory double-hop as the cold breaks.
+        cluck();
+        emote("🌷");
+        self.mood = "radiant";
+        world.hopActor(self, 0.55, 500);
+        setTimeout(() => world.hopActor(self, 0.4, 400), 520);
+        self.joy = Math.min(1, self.joy + 0.08);
+        if (once("blue/thaw")) world.discover(self.id, "Sang as the world warmed back.");
+        break;
+      case "auroraBorealis":
+        // Gaze up, soft joy lift.
+        emote("✨");
+        world.hopActor(self, 0.25, 700);
+        self.joy = Math.min(1, self.joy + 0.06);
+        if (once("blue/auroraBorealis")) world.discover(self.id, "Watched the sky paint itself.");
+        break;
+      case "meteor":
+        // A wishful little hop.
+        cluck();
+        emote("⭐");
+        world.hopActor(self, 0.45, 500);
+        self.joy = Math.min(1, self.joy + 0.07);
+        if (once("blue/meteor")) world.discover(self.id, "Made a wish on a streak of fire.");
+        break;
+      case "eclipse":
+        // Settles down — calm, not afraid.
+        emote("🌑");
+        self.joy = Math.max(0, self.joy - 0.02);
+        if (once("blue/eclipse")) world.discover(self.id, "Sat quietly through the dimming.");
+        break;
+
+      // ---- peer-special cheers (broadcast from EventDirector.run) ----
+      case "constellation":
+        emote("⭐");
+        world.hopActor(self, 0.3, 450);
+        self.joy = Math.min(1, self.joy + 0.04);
+        if (once("blue/constellation")) world.discover(self.id, "Cheered Aurora's star-song.");
+        break;
+      case "rainbow":
+        emote("🌈");
+        world.hopActor(self, 0.35, 450);
+        self.joy = Math.min(1, self.joy + 0.05);
+        if (once("blue/rainbow")) world.discover(self.id, "Caught Glimmer's rainbow on her wing.");
+        break;
+      case "pipRain":
+        emote("💧");
+        world.hopActor(self, 0.3, 500);
+        self.joy = Math.min(1, self.joy + 0.04);
+        if (once("blue/pipRain")) world.discover(self.id, "Danced under Pip's pocket storm.");
+        break;
+      case "memoryBubble":
+        emote("💭");
+        world.hopActor(self, 0.2, 400);
+        self.joy = Math.min(1, self.joy + 0.03);
+        break;
+      case "rebirth":
+        emote("🔥");
+        world.hopActor(self, 0.4, 500);
+        self.joy = Math.min(1, self.joy + 0.05);
+        if (once("blue/rebirth")) world.discover(self.id, "Cheered Ember's rebirth in flame.");
+        break;
     }
-    if (eventId === "wolf") self.joy = Math.max(0, self.joy - 0.03);
   },
 };
 

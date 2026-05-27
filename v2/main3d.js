@@ -56,6 +56,10 @@ window.addEventListener("resize", () => {
 
 const world = new World({ renderer, scene, camera });
 world.audio = audio;
+// Hand the world a reference to OrbitControls so its setView() can animate
+// the orbit target — without this, controls.update() snaps lookAt back each
+// frame and the camera tween fights itself.
+world._orbit = controls;
 window.__world = world;
 
 // Preload painted portrait textures (and any GLBs if they exist). Missing
@@ -143,6 +147,50 @@ function dropPrizeEgg(charId) {
   world.placeEgg(c, new THREE.Vector3(x, y, z));
   world.toast(`${c.name}'s egg appeared — Blue's care brought it.`);
 }
+
+// ---- V1 → Realm egg pipeline --------------------------------------------
+// The top-level router (router.js, only present when the Realm is loaded
+// inside the iframe shell) signals "Cluckbot laid an egg" by bumping a
+// localStorage key. We watch the key and, on each delta, drop the next
+// prize hatchling in line. Standalone (when realm.html is loaded directly)
+// the key never moves, and this is dormant.
+const PIPELINE_SIGNAL_KEY = "bluechicken/egg-pipeline/signal";
+const PIPELINE_CONSUMED_KEY = "bluechicken/egg-pipeline/consumed";
+let _pipelineLastTs = 0;
+function consumeOnePipelineEgg() {
+  // Pick the next prize hatchling that hasn't yet been unlocked.
+  const next = PRIZE_THRESHOLDS.find((t) => !care.s.unlocked[t.id]);
+  if (!next) return false;
+  care.s.unlocked[next.id] = true;
+  care._save && care._save();
+  dropPrizeEgg(next.id);
+  // Also notify via care so the codex/listeners pick it up.
+  if (typeof care._notify === "function") care._notify();
+  return true;
+}
+function pollEggPipeline() {
+  let raw;
+  try { raw = localStorage.getItem(PIPELINE_SIGNAL_KEY); } catch (_) { return; }
+  if (!raw) return;
+  let signal;
+  try { signal = JSON.parse(raw); } catch (_) { return; }
+  if (!signal || !signal.ts || signal.ts === _pipelineLastTs) return;
+  _pipelineLastTs = signal.ts;
+  const delta = Math.max(1, Math.min(8, signal.delta || 1));
+  let consumed = 0;
+  try { consumed = JSON.parse(localStorage.getItem(PIPELINE_CONSUMED_KEY) || "0"); } catch (_) {}
+  let dropped = 0;
+  for (let i = 0; i < delta; i++) {
+    if (consumeOnePipelineEgg()) dropped++;
+  }
+  try { localStorage.setItem(PIPELINE_CONSUMED_KEY, JSON.stringify(consumed + dropped)); } catch (_) {}
+  // Force-refresh visibility so the new egg respects the current view mode.
+  world._applyViewVisibility();
+}
+// Poll once on boot (catches eggs piped while the realm wasn't loaded), and
+// then every 2s thereafter.
+pollEggPipeline();
+setInterval(pollEggPipeline, 2000);
 
 // ---- Roster ---------------------------------------------------------------
 
@@ -619,6 +667,46 @@ devpanel.addEventListener("click", (ev) => {
   }
 });
 
+// ---- View switch (Care / Valley) -----------------------------------------
+// CARE = close-up Tamagotchi view of Blue, with the barn/coop dressing and
+// the action bar surfaced. VALLEY = pulled-back overview of all hatchlings
+// with the world stats panel surfaced.
+
+const viewCareBtn   = document.getElementById("view-care");
+const viewValleyBtn = document.getElementById("view-valley");
+
+function setBodyView(mode) {
+  document.body.classList.toggle("view-care",   mode === "care");
+  document.body.classList.toggle("view-valley", mode === "valley");
+  viewCareBtn.classList.toggle("active",   mode === "care");
+  viewValleyBtn.classList.toggle("active", mode === "valley");
+  viewCareBtn.setAttribute("aria-selected",   mode === "care"   ? "true" : "false");
+  viewValleyBtn.setAttribute("aria-selected", mode === "valley" ? "true" : "false");
+}
+
+function switchView(mode) {
+  setBodyView(mode);
+  world.setView(mode);
+  // Re-target orbit limits per view so the user can't accidentally drag out
+  // of the cozy framing in care view.
+  if (mode === "care") {
+    controls.minDistance = 4;
+    controls.maxDistance = 14;
+    // Entering care = you came back; Blue walks over to greet you.
+    world.attendToBlue(10000);
+  } else {
+    controls.minDistance = 4;
+    controls.maxDistance = 50;
+  }
+}
+
+viewCareBtn.onclick   = () => { audio.tap(); switchView("care"); };
+viewValleyBtn.onclick = () => { audio.tap(); switchView("valley"); };
+
+// Boot in care view — it's the entry / hatching experience.
+setBodyView("care");
+world.setView("care", { instant: true });
+
 // Hide the controls hint after 9 seconds.
 
 // ---- Joy / hatched pill ---------------------------------------------------
@@ -736,6 +824,9 @@ document.querySelectorAll(".action[data-care]").forEach((btn) => {
       // Brief actor reaction: pet/play/feed should jiggle Blue.
       const blue = world.actors.find((a) => a.id === BLUE.id);
       if (blue && k !== "sleep") world.petActor(blue);
+      // Tell Blue you're here — extends her "visiting" window so she walks
+      // back to the camera if she'd been off playing with a toy.
+      world.attendToBlue(8000);
     }
   };
 });
@@ -747,13 +838,18 @@ function frame(now) {
   const dt = Math.min(50, now - last);
   last = now;
   controls.update();
+  world._animateCamera(dt);
   // Tester-mode 10× time: feed the world a multiplied dt. Day/night and event
   // scheduler both consume dt, so a single multiplier accelerates everything.
   world.tick(fastTime ? dt * 10 : dt);
   // Blue's care ticks too — needs decay (or sleep regen) over real time.
   care.tick(fastTime ? dt * 10 : dt);
   // Roll any newly-unlocked prize animals into the world as eggs.
-  for (const t of care.newlyUnlocked()) dropPrizeEgg(t.id);
+  const newlyDropped = care.newlyUnlocked();
+  for (const t of newlyDropped) dropPrizeEgg(t.id);
+  // If a new prize-egg appeared and we're in care view, keep it hidden until
+  // the player switches to the valley view — preserves the cozy close-up.
+  if (newlyDropped.length) world._applyViewVisibility();
   updateJoyPill();
   updateCareHUD();
   if (!solisRevealed && world.actors.length >= PUBLIC_CHARS.length) checkSolisGate();
