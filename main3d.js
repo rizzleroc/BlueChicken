@@ -148,6 +148,50 @@ function dropPrizeEgg(charId) {
   world.toast(`${c.name}'s egg appeared — Blue's care brought it.`);
 }
 
+// ---- V1 → Realm egg pipeline --------------------------------------------
+// The top-level router (router.js, only present when the Realm is loaded
+// inside the iframe shell) signals "Cluckbot laid an egg" by bumping a
+// localStorage key. We watch the key and, on each delta, drop the next
+// prize hatchling in line. Standalone (when realm.html is loaded directly)
+// the key never moves, and this is dormant.
+const PIPELINE_SIGNAL_KEY = "bluechicken/egg-pipeline/signal";
+const PIPELINE_CONSUMED_KEY = "bluechicken/egg-pipeline/consumed";
+let _pipelineLastTs = 0;
+function consumeOnePipelineEgg() {
+  // Pick the next prize hatchling that hasn't yet been unlocked.
+  const next = PRIZE_THRESHOLDS.find((t) => !care.s.unlocked[t.id]);
+  if (!next) return false;
+  care.s.unlocked[next.id] = true;
+  care._save && care._save();
+  dropPrizeEgg(next.id);
+  // Also notify via care so the codex/listeners pick it up.
+  if (typeof care._notify === "function") care._notify();
+  return true;
+}
+function pollEggPipeline() {
+  let raw;
+  try { raw = localStorage.getItem(PIPELINE_SIGNAL_KEY); } catch (_) { return; }
+  if (!raw) return;
+  let signal;
+  try { signal = JSON.parse(raw); } catch (_) { return; }
+  if (!signal || !signal.ts || signal.ts === _pipelineLastTs) return;
+  _pipelineLastTs = signal.ts;
+  const delta = Math.max(1, Math.min(8, signal.delta || 1));
+  let consumed = 0;
+  try { consumed = JSON.parse(localStorage.getItem(PIPELINE_CONSUMED_KEY) || "0"); } catch (_) {}
+  let dropped = 0;
+  for (let i = 0; i < delta; i++) {
+    if (consumeOnePipelineEgg()) dropped++;
+  }
+  try { localStorage.setItem(PIPELINE_CONSUMED_KEY, JSON.stringify(consumed + dropped)); } catch (_) {}
+  // Force-refresh visibility so the new egg respects the current view mode.
+  world._applyViewVisibility();
+}
+// Poll once on boot (catches eggs piped while the realm wasn't loaded), and
+// then every 2s thereafter.
+pollEggPipeline();
+setInterval(pollEggPipeline, 2000);
+
 // ---- Roster ---------------------------------------------------------------
 
 function buildRoster() { /* V1 PRD: no roster strip; codex replaces it */ }

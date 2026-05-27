@@ -4,261 +4,131 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0a0710" />
-  <title>The Hatchling World — care for Blue, unlock a valley</title>
-  <meta name="description" content="Care for Blue Chicken. As your bond grows, prize hatchlings arrive — each from a different soul." />
-
-  <!-- V1 typography (Cluckbot PRD). Falls back to system fonts if CDN blocked. -->
+  <title>The Hatchling World — Cluckbot + the Realm</title>
+  <meta name="description" content="Cluckbot the robot chicken lives in your barnyard. As you care for her, she lays eggs that travel to the Hatchling Realm — where they grow up before joining her back home." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three":          "./vendor/three.module.js",
-      "three/addons/":  "./vendor/"
+  <style>
+    *,*::before,*::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      background: #0a0710;
+      color: #f7f3ff;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
     }
-  }
-  </script>
+    /* The two app frames stack; only the active one is visible. */
+    #frame-main, #frame-realm {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #0a0710;
+      transition: opacity .35s ease;
+    }
+    #frame-realm { opacity: 0; pointer-events: none; }
+    body.show-realm #frame-realm { opacity: 1; pointer-events: auto; }
+    body.show-realm #frame-main  { opacity: 0; pointer-events: none; }
+
+    /* Top-right view toggle floats above the iframes. */
+    .view-switch {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      right: 14px;
+      z-index: 9999;
+      display: inline-flex;
+      padding: 3px;
+      background: rgba(20,12,32,.78);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 999px;
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      box-shadow: 0 6px 24px -8px rgba(0,0,0,.65);
+    }
+    .view-switch button {
+      padding: 8px 14px;
+      border: 0;
+      background: transparent;
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: .22em;
+      color: #cfc3e8;
+      cursor: pointer;
+      transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+    }
+    .view-switch button.active {
+      background: linear-gradient(135deg, rgba(255,127,214,.35), rgba(255,213,127,.25));
+      color: #fff;
+      box-shadow: 0 0 14px rgba(255,127,214,.35), 0 0 0 1px rgba(255,255,255,.12) inset;
+    }
+    .view-switch button:hover:not(.active) {
+      background: rgba(255,255,255,.06);
+      color: #fff;
+    }
+
+    /* Egg notification — pops when V1 lays an egg and the realm receives it. */
+    #egg-notice {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-30px);
+      z-index: 9998;
+      padding: 10px 18px;
+      background: rgba(20,12,32,.85);
+      border: 1px solid rgba(255,213,127,.45);
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .18em;
+      color: #ffd57f;
+      opacity: 0;
+      transition: opacity .35s ease, transform .35s cubic-bezier(.2,.8,.2,1);
+      pointer-events: none;
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    }
+    #egg-notice.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    #egg-notice button {
+      margin-left: 12px;
+      padding: 4px 10px;
+      border: 1px solid rgba(255,213,127,.55);
+      background: rgba(255,213,127,.12);
+      color: #ffd57f;
+      border-radius: 999px;
+      font: inherit;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    #egg-notice button:hover { background: rgba(255,213,127,.25); }
+  </style>
 </head>
 <body>
 
-  <!-- Subtle film grain over everything, V1-style. -->
-  <div id="grain" aria-hidden="true"></div>
+  <!-- Main view (V1 Cluckbot) and the 3D Realm both live in iframes so their
+       JS state stays cleanly partitioned. Bond/egg state flows between them
+       via localStorage and a setInterval watcher in router.js below. -->
+  <iframe id="frame-main"  src="./main/index.html"  title="Cluckbot — main view"></iframe>
+  <iframe id="frame-realm" src="./realm.html"       title="Hatchling Realm"></iframe>
 
-  <!-- The 3D scene sits behind the HUD chrome. Same canvas id main3d.js binds to. -->
-  <canvas id="webgl" aria-hidden="true"></canvas>
-
-  <!-- =================== WELCOME / NAMING (V1 style) =================== -->
-  <div id="welcome" class="modal" aria-modal="false">
-    <div class="modal-card">
-      <p class="kicker">the hatchling world · 2026</p>
-      <h1>You have been given<br/>an <em>egg.</em></h1>
-      <p class="lede">A small blue chicken sleeps inside. Care for her well — the valley will follow.</p>
-      <button id="welcome-go" class="cta" type="button">
-        <span class="cta-label">Begin
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-            <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </span>
-      </button>
-      <p class="modal-hint">tap her egg six times to hatch · drag the world to look around</p>
-    </div>
+  <!-- Top-right toggle: BARNYARD (V1 Cluckbot) ↔ REALM (3D Hatchling Realm) -->
+  <div class="view-switch" role="tablist" aria-label="View">
+    <button id="btn-main"  class="active" type="button">BARNYARD</button>
+    <button id="btn-realm"               type="button">REALM</button>
   </div>
 
-  <!-- =================== MAIN STAGE =================== -->
-  <main id="stage" class="stage">
-
-    <!-- Topbar: BLUE / age / vibe / coins / quick buttons. -->
-    <header class="topbar">
-      <div class="top-left">
-        <h2 class="pet-name" id="petName">BLUE</h2>
-        <span class="pet-meta">
-          <span class="pet-stage" id="petStage">egg</span>
-          <span class="pet-age"   id="petAge">0s</span>
-        </span>
-      </div>
-      <div class="top-center">
-        <span class="vibe" id="petVibe">Tap her egg six times.</span>
-      </div>
-      <div class="top-right">
-        <div class="view-switch" role="tablist" aria-label="View mode">
-          <button id="view-care"   class="view-btn active" type="button" role="tab" aria-selected="true">CARE</button>
-          <button id="view-valley" class="view-btn"        type="button" role="tab" aria-selected="false">VALLEY</button>
-        </div>
-        <span class="coin-balance" id="coinBalance" aria-label="Hatched count">
-          <span class="coin-icon" aria-hidden="true">◎</span>
-          <b id="coinCount">0 / 10</b>
-        </span>
-        <button id="codex-toggle" class="ghost" type="button">CODEX</button>
-        <button id="shop-toggle"  class="ghost" type="button">STORE</button>
-        <button id="audio-toggle" class="ghost" type="button">SOUND: OFF</button>
-        <button id="dev-toggle"   class="ghost" type="button" hidden>DEV</button>
-      </div>
-    </header>
-
-    <!-- Needs panel: 5 stat bars + bond. Surfaces from Blue's care.js. -->
-    <aside class="needs" id="careNeeds" aria-label="Blue's needs" hidden>
-      <div class="need" data-key="hunger">
-        <span class="need-icon" aria-hidden="true">⌬</span>
-        <span class="need-label">HUNGER</span>
-        <div class="need-bar"><i id="bar-hunger"></i></div>
-      </div>
-      <div class="need" data-key="energy">
-        <span class="need-icon" aria-hidden="true">◔</span>
-        <span class="need-label">ENERGY</span>
-        <div class="need-bar"><i id="bar-energy"></i></div>
-      </div>
-      <div class="need" data-key="happiness">
-        <span class="need-icon" aria-hidden="true">✿</span>
-        <span class="need-label">HAPPY</span>
-        <div class="need-bar"><i id="bar-happiness"></i></div>
-      </div>
-      <div class="need" data-key="cleanliness">
-        <span class="need-icon" aria-hidden="true">≈</span>
-        <span class="need-label">CLEAN</span>
-        <div class="need-bar"><i id="bar-cleanliness"></i></div>
-      </div>
-      <div class="need critical" data-key="sanity">
-        <span class="need-icon" aria-hidden="true">◉</span>
-        <span class="need-label">CALM</span>
-        <div class="need-bar"><i id="bar-sanity"></i></div>
-      </div>
-      <div class="need bond" data-key="bond">
-        <span class="need-icon" aria-hidden="true">♡</span>
-        <span class="need-label">BOND</span>
-        <div class="need-bar"><i id="bar-bond"></i></div>
-      </div>
-    </aside>
-
-    <!-- Right: world stats (BOND / HATCHED / NEXT PRIZE / EVENT). -->
-    <aside class="stats" aria-label="World stats">
-      <div class="stat"><span class="stat-label">HATCHED</span><span class="stat-value" id="stat-hatched">0 / 10</span></div>
-      <div class="stat"><span class="stat-label">NEXT</span><span class="stat-value" id="stat-next">—</span></div>
-      <div class="stat"><span class="stat-label">TIME</span><span class="stat-value" id="stat-time">DAY</span></div>
-      <div class="stat"><span class="stat-label">EVENT</span><span class="stat-value" id="stat-event">QUIET</span></div>
-    </aside>
-
-    <!-- Habitat — the 3D world is rendered to the webgl canvas behind. This
-         div is the click hit target and floats over the canvas for raycasting. -->
-    <div class="habitat" id="habitat" aria-label="The Hatchling Valley"></div>
-
-    <!-- Action bar: FEED / PLAY / PET / CLEAN / SLEEP (matches V1 verbatim).
-         Carries the .care-actions alias too so playtest selectors targeting
-         either `.action[data-care=...]` or `.care-actions button[data-care=...]`
-         both work. -->
-    <footer class="actions care-actions" id="careActions" hidden>
-      <button class="action" data-care="feed">
-        <span class="action-glyph">🌾</span>
-        <span class="action-name">FEED</span>
-      </button>
-      <button class="action" data-care="play">
-        <span class="action-glyph">⚐</span>
-        <span class="action-name">PLAY</span>
-      </button>
-      <button class="action" data-care="pet">
-        <span class="action-glyph">♡</span>
-        <span class="action-name">PET</span>
-      </button>
-      <button class="action" data-care="clean">
-        <span class="action-glyph">⌫</span>
-        <span class="action-name">CLEAN</span>
-      </button>
-      <button class="action" data-care="sleep">
-        <span class="action-glyph">☾</span>
-        <span class="action-name">SLEEP</span>
-      </button>
-    </footer>
-
-    <div class="float-msg" id="floatMsg" aria-live="polite"></div>
-  </main>
-
-  <!-- =================== HATCH REVEAL MODAL (V1-style card) =================== -->
-  <div id="reveal" class="modal" hidden aria-modal="true">
-    <div class="modal-card reveal-card">
-      <p class="kicker">it hatched</p>
-      <img id="reveal-portrait" class="reveal-portrait" alt="" />
-      <h1 id="reveal-name">Blue</h1>
-      <p class="variant-tag" id="reveal-role">Hatchling Keeper</p>
-      <p class="lede" id="reveal-story"></p>
-      <button id="reveal-go" class="cta" type="button">
-        <span class="cta-label">Continue</span>
-      </button>
-    </div>
+  <!-- "Blue laid an egg — visit the realm" prompt -->
+  <div id="egg-notice" role="status" aria-live="polite">
+    <span id="egg-notice-text">Blue laid an egg — it's in the Realm.</span>
+    <button id="egg-notice-go">VISIT</button>
   </div>
 
-  <!-- =================== CODEX MODAL =================== -->
-  <div id="codex" class="modal" hidden aria-modal="true">
-    <div class="modal-card codex-card">
-      <header class="shop-head">
-        <div>
-          <p class="kicker">field journal</p>
-          <h2 id="codex-name">Blue</h2>
-        </div>
-        <button id="codex-close" class="ghost" type="button">CLOSE</button>
-      </header>
-      <div class="codex-body">
-        <div class="codex-left">
-          <img id="codex-portrait" class="codex-portrait" alt="" />
-          <p class="variant-tag" id="codex-role"></p>
-          <p class="lede" id="codex-story"></p>
-        </div>
-        <div class="codex-right">
-          <p class="shop-category-name">DISCOVERIES</p>
-          <ol id="codex-discoveries" class="codex-discoveries"></ol>
-          <p class="shop-category-name" style="margin-top:18px">SOULS</p>
-          <div id="codex-thumbs" class="codex-thumbs"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =================== SHOP MODAL =================== -->
-  <div id="shop" class="modal" hidden aria-modal="true">
-    <div class="modal-card shop-card">
-      <header class="shop-head">
-        <div>
-          <p class="kicker">accelerator store</p>
-          <h2>Tend the valley faster</h2>
-        </div>
-        <button id="shop-close" class="ghost" type="button">CLOSE</button>
-      </header>
-      <div id="shop-grid" class="shop-grid"></div>
-      <p class="modal-hint" style="margin-top: 18px;">Stripe Payment Links not configured — purchases stub a pretend-pay dialog and grant items client-side.</p>
-    </div>
-  </div>
-
-  <!-- =================== STRIPE STUB (pretend pay) =================== -->
-  <div id="paystub" class="modal" hidden aria-modal="true">
-    <div class="modal-card paystub-card">
-      <p class="kicker" id="paystub-title">Confirm purchase</p>
-      <p class="lede" id="paystub-body"></p>
-      <div class="paystub-buttons">
-        <button id="paystub-cancel" class="ghost" type="button">CANCEL</button>
-        <button id="paystub-confirm" class="cta" type="button">
-          <span class="cta-label">Pretend-Pay $<span id="paystub-amount">0.00</span></span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- =================== DEV PANEL =================== -->
-  <aside id="devpanel" hidden>
-    <header><strong>Dev</strong><button id="devpanel-close" aria-label="Close">×</button></header>
-    <section>
-      <h4>Time</h4>
-      <button data-dev="skipphase">Skip phase</button>
-      <button data-dev="cycle">→ Night</button>
-      <button data-dev="fasttime">10× time</button>
-    </section>
-    <section>
-      <h4>Care</h4>
-      <button data-dev="hatchblue">Hatch Blue</button>
-      <button data-dev="bondmax">Bond = 100</button>
-      <button data-dev="joyall">Joy +1 all</button>
-      <button data-dev="solis">Summon Solis</button>
-    </section>
-    <section>
-      <h4>Events</h4>
-      <button data-event="ufo">UFO</button>
-      <button data-event="wolf">Wolf</button>
-      <button data-event="winter">Winter</button>
-      <button data-event="auroraBorealis">Aurora</button>
-      <button data-event="meteor">Meteors</button>
-      <button data-event="eclipse">Eclipse</button>
-    </section>
-    <section>
-      <h4>Shop</h4>
-      <button data-dev="freeacc">+5 each</button>
-      <button data-dev="opacc">Open</button>
-    </section>
-    <section>
-      <h4>Save</h4>
-      <button data-dev="reset">Reset (reload)</button>
-    </section>
-  </aside>
-
-  <script type="module" src="main3d.js"></script>
+  <script src="./router.js"></script>
 </body>
 </html>
