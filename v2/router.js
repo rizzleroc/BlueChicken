@@ -106,4 +106,83 @@
       writePiped(eggs);
     }
   })();
+
+  // ---- Realm → Barnyard: graduate pipeline -------------------------------
+  // The realm writes graduated hatchlings to "bluechicken/graduates" once
+  // they've sustained joy ≥ 0.9 for 30s. We poll the ledger, render each
+  // graduate as a portrait in the flock strip (over the barnyard view),
+  // and flash a green "X has grown up" notice on every new arrival.
+  const GRAD_KEY = "bluechicken/graduates";
+  const SEEN_KEY = "bluechicken/graduates/shell-seen";
+  const flockStrip = document.getElementById("flock-strip");
+  const gradNotice = document.getElementById("grad-notice");
+
+  function readGraduates() {
+    try {
+      const raw = localStorage.getItem(GRAD_KEY);
+      return raw ? (JSON.parse(raw) || []) : [];
+    } catch (_) { return []; }
+  }
+  function readSeenIds() {
+    try {
+      const raw = localStorage.getItem(SEEN_KEY);
+      return new Set(raw ? (JSON.parse(raw) || []) : []);
+    } catch (_) { return new Set(); }
+  }
+  function writeSeenIds(set) {
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(set))); } catch (_) {}
+  }
+
+  function flashGradNotice(name) {
+    gradNotice.textContent = `${name} has grown up — joining Blue at the barnyard.`;
+    gradNotice.classList.add("show");
+    clearTimeout(flashGradNotice._t);
+    flashGradNotice._t = setTimeout(() => gradNotice.classList.remove("show"), 6500);
+  }
+
+  function renderFlock() {
+    const graduates = readGraduates();
+    if (graduates.length === 0) {
+      flockStrip.classList.remove("show");
+      flockStrip.innerHTML = "";
+      return;
+    }
+    flockStrip.classList.add("show");
+    // V1 lives in main/, so portraits referenced as "docs/portraits/X.png"
+    // would resolve relative to the SHELL — which works since docs/portraits
+    // is at the repo root too. Build the resolved URL once.
+    const existing = new Set(Array.from(flockStrip.children).map((el) => el.dataset.id));
+    for (const g of graduates) {
+      if (existing.has(g.id)) continue;
+      const img = document.createElement("img");
+      img.className = "flock-member fresh";
+      img.dataset.id = g.id;
+      img.alt = g.name || g.id;
+      img.title = `${g.name || g.id} — ${g.role || "graduate"}`;
+      // Portraits live under ./docs/portraits/ on the shell (root) — but the
+      // realm references them as relative paths; resolve against ./realm.html.
+      img.src = g.portrait
+        ? new URL(g.portrait, location.href.replace(/[^\/]+$/, "")).href
+        : "";
+      flockStrip.appendChild(img);
+    }
+  }
+
+  function pollGraduates() {
+    const graduates = readGraduates();
+    const seen = readSeenIds();
+    let dirty = false;
+    for (const g of graduates) {
+      if (!seen.has(g.id)) {
+        flashGradNotice(g.name || g.id);
+        seen.add(g.id);
+        dirty = true;
+      }
+    }
+    if (dirty) writeSeenIds(seen);
+    renderFlock();
+  }
+  // Initial render — but don't flash for anyone already seen (silent rebuild).
+  renderFlock();
+  setInterval(pollGraduates, 2000);
 })();

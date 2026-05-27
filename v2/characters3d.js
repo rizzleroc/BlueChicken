@@ -78,6 +78,8 @@ function eggBase(colorHex, decorate = (g) => {}) {
 const bluechicken = {
   id: "bluechicken",
   portrait: "docs/portraits/bluechicken.png",
+  model: "docs/models/bluechicken.glb",
+  modelTargetHeight: 1.8,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
   // bump (= 4.8) made her tower over the care-view camera frame. 1.8 puts
@@ -365,6 +367,8 @@ const bluechicken = {
 const aurora = {
   id: "aurora",
   portrait: "docs/portraits/aurora.png",
+  model: "docs/models/aurora.glb",
+  modelTargetHeight: 3.0,
   spriteScale: 3.5,
   name: "Aurora",
   role: "Sky-Whale of the Quiet Vault",
@@ -434,6 +438,8 @@ const aurora = {
 const magma = {
   id: "magma",
   portrait: "docs/portraits/magma.png",
+  model: "docs/models/magma.glb",
+  modelTargetHeight: 1.6,
   spriteScale: 1.8,
   name: "Magma",
   role: "Pup of the First Forge",
@@ -515,6 +521,8 @@ const magma = {
 const glimmer = {
   id: "glimmer",
   portrait: "docs/portraits/glimmer.png",
+  model: "docs/models/glimmer.glb",
+  modelTargetHeight: 1.6,
   spriteScale: 1.8,
   name: "Glimmer",
   role: "Fox of the Prism Caves",
@@ -587,6 +595,8 @@ const glimmer = {
 
 const mossback = {
   id: "mossback",
+  model: "docs/models/mossback.glb",
+  modelTargetHeight: 1.7,
   portrait: "docs/portraits/mossback.png",
   spriteScale: 2.2,
   name: "Mossback",
@@ -656,6 +666,8 @@ const mossback = {
 const whisper = {
   id: "whisper",
   portrait: "docs/portraits/whisper.png",
+  model: "docs/models/whisper.glb",
+  modelTargetHeight: 1.7,
   spriteScale: 1.9,
   name: "Whisper",
   role: "Cat of the Unlit Hour",
@@ -736,6 +748,8 @@ const whisper = {
 const pip = {
   id: "pip",
   portrait: "docs/portraits/pip.png",
+  model: "docs/models/pip.glb",
+  modelTargetHeight: 1.3,
   spriteScale: 1.5,
   name: "Pip",
   role: "Sparrow with a Pocket Storm",
@@ -811,6 +825,8 @@ const pip = {
 const bubble = {
   id: "bubble",
   portrait: "docs/portraits/bubble.png",
+  model: "docs/models/bubble.glb",
+  modelTargetHeight: 2.0,
   spriteScale: 2.2,
   name: "Bubble",
   role: "Jelly of the Drifting Trench",
@@ -885,6 +901,8 @@ const bubble = {
 const ember = {
   id: "ember",
   portrait: "docs/portraits/ember.png",
+  model: "docs/models/ember.glb",
+  modelTargetHeight: 1.7,
   spriteScale: 1.9,
   name: "Ember",
   role: "Phoenix Still Learning to Burn",

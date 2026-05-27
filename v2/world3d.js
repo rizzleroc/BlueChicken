@@ -1853,6 +1853,12 @@ export class World {
     const joyRate = (pref === "any" || pref === tname) ? 0.00004 : 0.00002;
     actor.joy = Math.min(1, actor.joy + dt * joyRate);
 
+    // Maturation tracker: a prize hatchling that holds joy ≥ 0.9 for
+    // GRADUATE_SUSTAIN_MS "grows up" and graduates back to Cluckbot's
+    // barnyard. The router shell watches the graduates key and renders
+    // the returning flock in the V1 view.
+    this._tickMaturation(actor, dt);
+
     if (typeof def.onMove === "function") def.onMove(this, actor);
 
     // Mossback's shell grows occasionally.
@@ -2172,11 +2178,60 @@ export class World {
   // each character's joy, what's been discovered, what flags fired. Written
   // every time those mutate. Keeps the world's promise that "the world
   // remembers" actually true.
+  // Per-actor maturation. A prize hatchling that holds joy ≥ 0.9 for
+  // GRADUATE_SUSTAIN_MS graduates and is written to the shared graduates
+  // ledger. Blue and Solis are exempt — Blue is the keeper, Solis is
+  // the secret endgame. Once graduated, we don't unwrite — the realm
+  // keeps them as a visible alumnus until the player resets.
+  _tickMaturation(actor, dt) {
+    const def = actor.def;
+    if (!def || def.isGateway || def.secret) return;
+    if (actor.graduated) return;
+    const GRADUATE_SUSTAIN_MS = 30000; // 30s of sustained joy ≥ 0.9
+    if (actor.joy >= 0.9) {
+      actor._joyHighSince = actor._joyHighSince || performance.now();
+      if (performance.now() - actor._joyHighSince >= GRADUATE_SUSTAIN_MS) {
+        this._graduateActor(actor);
+      }
+    } else {
+      actor._joyHighSince = 0;
+    }
+  }
+
+  _graduateActor(actor) {
+    actor.graduated = true;
+    actor.graduatedAt = Date.now();
+    this._appendGraduate({
+      id: actor.id,
+      name: actor.name,
+      portrait: actor.def.portrait || null,
+      role: actor.def.role || "",
+      at: actor.graduatedAt,
+    });
+    this.toast(`${actor.name} has grown up — joining Blue at the barnyard.`);
+    this.discover(actor.id, "Grew up. Walked home to Blue.");
+    this._persist();
+  }
+
+  // Append the graduate to a shared localStorage ledger the top-level
+  // shell watches. Idempotent — if the same id is already present, no-op.
+  _appendGraduate(g) {
+    const KEY = "bluechicken/graduates";
+    let list = [];
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) list = JSON.parse(raw) || [];
+    } catch (_) { list = []; }
+    if (list.some((x) => x.id === g.id)) return;
+    list.push(g);
+    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (_) {}
+  }
+
   _persist() {
     if (typeof localStorage === "undefined") return;
     try {
       const actorState = {};
-      for (const a of this.actors) actorState[a.id] = { joy: a.joy, mood: a.mood };
+      for (const a of this.actors) actorState[a.id] = { joy: a.joy, mood: a.mood, graduated: !!a.graduated, graduatedAt: a.graduatedAt || 0 };
       const snap = {
         v: 1,
         hatched: this.hatched,
