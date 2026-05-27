@@ -195,6 +195,29 @@ function pollEggPipeline() {
 pollEggPipeline();
 setInterval(pollEggPipeline, 2000);
 
+// ---- V1 Inventory → Realm props pipeline --------------------------------
+// V1's shop writes owned-item ids into cluckbot.v1.inventory. We mirror that
+// list into the realm so every yarn ball / mirror / henhouse / disco ball
+// you buy in Cluckbot actually shows up in Blue's barn (and Blue plays with
+// it on her toy loop). Standalone (no V1 ever ran) the inventory is empty
+// and the barn just shows the built-in dressing.
+const V1_INV_KEY = "cluckbot.v1";
+let _lastInventoryJson = "";
+function pollInventory() {
+  let raw;
+  try { raw = localStorage.getItem(V1_INV_KEY); } catch (_) { return; }
+  if (!raw) return;
+  let pet;
+  try { pet = JSON.parse(raw); } catch (_) { return; }
+  const inv = (pet && Array.isArray(pet.inventory)) ? pet.inventory : [];
+  const key = JSON.stringify(inv);
+  if (key === _lastInventoryJson) return;
+  _lastInventoryJson = key;
+  world.setInventory(inv);
+}
+pollInventory();
+setInterval(pollInventory, 2000);
+
 // ---- Roster ---------------------------------------------------------------
 
 function buildRoster() { /* V1 PRD: no roster strip; codex replaces it */ }
