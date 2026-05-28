@@ -1457,15 +1457,29 @@ export class World {
   // priority. Returns a Promise that resolves once all loads have settled.
   preloadModels(charDefs) {
     const promises = [];
+    const tried = [];
     for (const c of charDefs) {
-      if (c.model) promises.push(this._loadGLB(c));
+      if (c.model) {
+        tried.push(c.id);
+        promises.push(this._loadGLB(c));
+      }
       if (c.portrait) promises.push(this._loadSpriteTexture(c));
     }
     // Also load painted scenery textures used by _scatterScenery. We can't load
     // them during the constructor because TextureLoader is async — and we want
     // the scenery sprites to be ready by the time the user dismisses welcome.
     promises.push(this._loadSceneryTextures());
-    return Promise.all(promises);
+    return Promise.all(promises).then((r) => {
+      // Diagnostic: report which Tripo GLBs landed vs fell back to procedural.
+      const loaded = tried.filter((id) => this.modelCache[id]);
+      const missing = tried.filter((id) => !this.modelCache[id]);
+      if (typeof console !== "undefined") {
+        console.log("[realm] GLBs loaded:", loaded.length ? loaded.join(", ") : "(none)");
+        if (missing.length) console.log("[realm] procedural fallback for:", missing.join(", "));
+      }
+      this._modelStatus = { loaded, missing };
+      return r;
+    });
   }
 
   _loadSceneryTextures() {
@@ -2037,18 +2051,29 @@ export class World {
     // view, plays with the coop toys (peck the bowl, hop on bales) when
     // left alone (VALLEY view, or after enough idle seconds in CARE).
     if (def.isGateway && this._tickBlue(actor, dt)) return;
-    // Wander within the ground disc.
-    const speed = def.id === "magma" && actor._dashUntil > performance.now() ? 8 : 1.2;
-    actor.heading += rand(-0.02, 0.02);
-    const radius = GROUND_RADIUS - 3;
-    const distFromCenter = Math.hypot(m.position.x, m.position.z);
-    if (distFromCenter > radius) {
-      // turn back toward center
-      const desired = Math.atan2(-m.position.z, -m.position.x);
-      actor.heading = desired + rand(-0.1, 0.1);
+
+    // Every other actor gets goal-directed behavior. They pick a GOAL every
+    // 5-15 seconds (visit a toy, approach a peer, retreat to a quiet spot,
+    // sun themselves at a preferred time, etc.), walk toward it, then emote
+    // their thought on arrival. This is what makes the valley feel alive
+    // instead of "everyone wanders randomly forever."
+    this._pickActorGoal(actor);
+    const goalSpeed = this._steerToGoal(actor, dt);
+    // Wander fall-through — used only when no goal selected this frame.
+    const speed = goalSpeed != null ? goalSpeed
+      : (def.id === "magma" && actor._dashUntil > performance.now() ? 8 : 1.2);
+    if (goalSpeed == null) {
+      // Pure wander
+      actor.heading += rand(-0.02, 0.02);
+      const radius = GROUND_RADIUS - 3;
+      const distFromCenter = Math.hypot(m.position.x, m.position.z);
+      if (distFromCenter > radius) {
+        const desired = Math.atan2(-m.position.z, -m.position.x);
+        actor.heading = desired + rand(-0.1, 0.1);
+      }
+      m.position.x += Math.cos(actor.heading) * speed * dt / 1000;
+      m.position.z += Math.sin(actor.heading) * speed * dt / 1000;
     }
-    m.position.x += Math.cos(actor.heading) * speed * dt / 1000;
-    m.position.z += Math.sin(actor.heading) * speed * dt / 1000;
 
     // Y position by category. Sprite actors anchor at their feet (sprite
     // center is at the bottom), so the y here is "feet height"; for procedural
@@ -2096,6 +2121,10 @@ export class World {
     const pref = def.prefersTime;
     const joyRate = (pref === "any" || pref === tname) ? 0.00004 : 0.00002;
     actor.joy = Math.min(1, actor.joy + dt * joyRate);
+
+    // Tick the mood so it tracks joy/time — otherwise actors stay
+    // "curious" forever. The plumbob + inspector already render mood.
+    if (typeof this._moodFor === "function") actor.mood = this._moodFor(actor);
 
     // Maturation tracker: a prize hatchling that holds joy ≥ 0.9 for
     // GRADUATE_SUSTAIN_MS "grows up" and graduates back to Cluckbot's
@@ -2255,6 +2284,185 @@ export class World {
     } else {
       // Preen / settle — a calm half-hop.
       this.hopActor(actor, 0.25, 600);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Generic goal-directed AI for all non-Blue actors. Every 5-15s they
+  // pick a goal based on personality + time + nearby props/peers and
+  // walk toward it, emoting a thought on arrival. The goal lives at
+  // actor._goal = { pos, kind, arrivedAt, lingerMs, peer? }. When no
+  // goal is set we fall through to the wander code in _tickActor.
+  // ------------------------------------------------------------------
+  _pickActorGoal(actor) {
+    const now = performance.now();
+    if (actor._goal && now < (actor._goalDeadline || 0)) return;
+    if (actor._goalNextAt && now < actor._goalNextAt) return;
+    actor._goalNextAt = now + rand(4500, 14000); // schedule next reconsideration
+
+    const def = actor.def;
+    const tname = this.timeName();
+    const prefers = def.prefersTime;
+    const m = actor.mesh;
+    const isFlyOrFloat = def.flying || def.floating;
+
+    // Personality-weighted goal pool. Each entry returns a goal or null.
+    const candidates = [];
+
+    // 1. Visit a toy in the barn — props the user bought. Ground walkers
+    //    pick toys with their natural interaction (peck, hop, preen).
+    //    Sprite/sky creatures hover over toys instead of landing.
+    if (this.toys && this.toys.length > 0 && Math.random() < 0.55) {
+      const t = this.toys[Math.floor(Math.random() * this.toys.length)];
+      candidates.push({ pos: t.pos.clone(), kind: "toy:" + t.label, lingerMs: 1400 + Math.random() * 1800 });
+    }
+
+    // 2. Approach a peer (social) — flyers/floaters skip this and pick from
+    //    the air pool instead. _tickSocial handles the deeper "did we hug" bit.
+    if (!isFlyOrFloat && this.actors.length > 1 && Math.random() < 0.35) {
+      const peers = this.actors.filter((p) => p !== actor && !p.def.flying && !p.def.floating);
+      if (peers.length > 0) {
+        const peer = peers[Math.floor(Math.random() * peers.length)];
+        candidates.push({
+          pos: peer.mesh.position.clone(),
+          kind: "social",
+          peer,
+          lingerMs: 1500 + Math.random() * 1500,
+        });
+      }
+    }
+
+    // 3. Sun spot / shade — preferred time of day pulls them toward open
+    //    space; opposite time of day pulls them toward the coop's shade.
+    if (prefers && prefers !== "any" && Math.random() < 0.3) {
+      const inMyTime = (prefers === tname);
+      const ang = Math.random() * Math.PI * 2;
+      const r  = inMyTime ? 6 + Math.random() * 6 : 3 + Math.random() * 2;
+      const x  = inMyTime ? Math.cos(ang) * r : -2 + Math.random() * 4; // open vs near coop
+      const z  = inMyTime ? Math.sin(ang) * r : -3 + Math.random() * 2;
+      candidates.push({
+        pos: new THREE.Vector3(x, 0, z),
+        kind: inMyTime ? "sun" : "shade",
+        lingerMs: 2000 + Math.random() * 2500,
+      });
+    }
+
+    // 4. Wander to a random spot (default). Always present as a fallback.
+    {
+      const ang = Math.random() * Math.PI * 2;
+      const r = 3 + Math.random() * 8;
+      candidates.push({
+        pos: new THREE.Vector3(Math.cos(ang) * r, 0, Math.sin(ang) * r),
+        kind: "wander",
+        lingerMs: 800 + Math.random() * 1200,
+      });
+    }
+
+    const goal = candidates[Math.floor(Math.random() * candidates.length)];
+    actor._goal = goal;
+    actor._goalDeadline = now + 20000; // hard limit so a stale goal doesn't pin them
+    // Emote a "thought" — what's on their mind. Strong signal that the AI
+    // is *thinking*, not just moving randomly. emoteActor throttles itself.
+    const thought = ({
+      "toy:bowl":     "🌾",
+      "toy:bale":     "♬",
+      "toy:coop":     "☾",
+      "toy:ball":     "✦",
+      "toy:henhouse": "♡",
+      "toy:disco":    "★",
+      "toy:mirror":   "✿",
+      "toy:worm":     "🌾",
+      "social":       "♡",
+      "sun":          "☀",
+      "shade":        "☾",
+      "wander":       "✦",
+    }[goal.kind] || "·");
+    if (this.emoteActor) this.emoteActor(actor, thought, 1400);
+  }
+
+  // Steer the actor toward its current goal. Returns a movement speed
+  // (px/s analog) when a goal exists, or null when no goal is set so the
+  // caller can fall through to wander code.
+  _steerToGoal(actor, dt) {
+    const goal = actor._goal;
+    if (!goal) return null;
+    const m = actor.mesh;
+    const dx = goal.pos.x - m.position.x;
+    const dz = goal.pos.z - m.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    // Per-personality speed.
+    const def = actor.def;
+    const base = def.id === "mossback" ? 0.7
+               : def.id === "magma" ? (actor._dashUntil > performance.now() ? 8 : 2.2)
+               : def.floating ? 0.9
+               : def.flying ? 1.6
+               : 1.5;
+
+    if (dist > 0.6) {
+      const ang = Math.atan2(dz, dx);
+      actor.heading = ang;
+      m.position.x += Math.cos(ang) * base * dt / 1000;
+      m.position.z += Math.sin(ang) * base * dt / 1000;
+      // Y position by category (kept consistent with the wander branch).
+      const isSprite = m.userData && m.userData.isSpriteActor;
+      if (def.flying) {
+        m.position.y = (isSprite ? 5 : 6) + Math.sin(performance.now() * 0.0008 + actor.born * 0.0001) * 0.6;
+      } else if (def.floating) {
+        m.position.y = (isSprite ? 0.8 : 1.5) + Math.sin(performance.now() * 0.0014 + actor.born * 0.0001) * 0.2;
+      } else {
+        m.position.y = (isSprite ? 0.0 : 0.6) + Math.abs(Math.sin(performance.now() * 0.005 + actor.born * 0.0002)) * 0.08;
+      }
+      if (!isSprite) m.rotation.y = -actor.heading + Math.PI / 2;
+      return base;
+    }
+
+    // Arrived — interact based on goal kind.
+    if (!goal.arrivedAt) {
+      goal.arrivedAt = performance.now();
+      this._actorInteractAtGoal(actor, goal);
+    } else if (performance.now() - goal.arrivedAt > (goal.lingerMs || 1500)) {
+      actor._goal = null;
+    }
+    return base * 0.05; // gentle settling motion
+  }
+
+  _actorInteractAtGoal(actor, goal) {
+    const def = actor.def;
+    if (goal.kind.startsWith("toy:")) {
+      const kind = goal.kind.slice(4);
+      if (kind === "bowl" || kind === "ball" || kind === "worm") {
+        // Peck-at: rapid head-bobs
+        if (!def.flying && !def.floating) this.hopActor(actor, -0.08, 200);
+        actor.joy = Math.min(1, actor.joy + 0.04);
+      } else if (kind === "bale" || kind === "perch") {
+        // Hop on
+        this.hopActor(actor, 0.5, 450);
+        actor.joy = Math.min(1, actor.joy + 0.05);
+      } else if (kind === "disco") {
+        // Dance: emote burst + joy bump
+        if (this.emoteActor) {
+          this.emoteActor(actor, "♬", 1500);
+          setTimeout(() => this.emoteActor && this.emoteActor(actor, "✦", 1500), 600);
+        }
+        actor.joy = Math.min(1, actor.joy + 0.08);
+      } else if (kind === "bed" || kind === "coop") {
+        // Rest: slight joy lift, settle
+        actor.joy = Math.min(1, actor.joy + 0.03);
+      } else {
+        actor.joy = Math.min(1, actor.joy + 0.02);
+      }
+    } else if (goal.kind === "social" && goal.peer) {
+      // Heart emote + joy lift on both ends
+      this.hopActor(actor, 0.3, 350);
+      if (this.emoteActor) this.emoteActor(actor, "♡", 1200);
+      actor.joy = Math.min(1, actor.joy + 0.04);
+    } else if (goal.kind === "sun") {
+      if (this.emoteActor) this.emoteActor(actor, "☀", 1300);
+      actor.joy = Math.min(1, actor.joy + 0.06);
+    } else if (goal.kind === "shade") {
+      if (this.emoteActor) this.emoteActor(actor, "☾", 1300);
+      actor.joy = Math.min(1, actor.joy + 0.02);
     }
   }
 
