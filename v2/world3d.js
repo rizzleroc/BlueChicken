@@ -2197,11 +2197,8 @@ export class World {
       if (s.arrivedAt === 0) {
         s.arrivedAt = now;
         if (s.mode === "visiting") {
-          // Face the camera so she "looks at" the player.
-          actor.heading = Math.atan2(
-            this.camera.position.z - m.position.z,
-            this.camera.position.x - m.position.x
-          );
+          // Greet — _tickBlueFace handles continuous camera-track now,
+          // so we don't snap heading here (would fight the lerp).
           this._blueGreet(actor);
         } else {
           // Toy interaction: peck / hop / preen.
@@ -2212,20 +2209,19 @@ export class World {
         // Move to the next toy.
         s.toyIdx = (s.toyIdx + Math.floor(1 + Math.random() * (this.toys.length - 1))) % this.toys.length;
         s.arrivedAt = 0;
-      } else if (s.mode === "visiting" && now - s.arrivedAt > 3000) {
-        // Subtle head re-aim every few seconds so she doesn't look frozen.
-        actor.heading = Math.atan2(
-          this.camera.position.z - m.position.z,
-          this.camera.position.x - m.position.x
-        ) + (Math.random() - 0.5) * 0.4;
-        s.arrivedAt = now;
       }
+      // Removed: the periodic random head-re-aim that made her spin in
+      // little circles. _tickBlueFace now continuously lerps the heading
+      // toward the camera while visiting — no jitter, just a steady gaze.
     }
 
     // Vertical bob — taller when visiting (alert), gentler when playing.
     const bobAmp = (s.mode === "visiting" && dist <= 0.5) ? 0.05 : 0.08;
     m.position.y = 0.6 + Math.abs(Math.sin(now * 0.005 + actor.born * 0.0002)) * bobAmp;
     m.rotation.y = -actor.heading + Math.PI / 2;
+
+    // Face animation: blink + look-at-you + mood-colored eyes + beak pops.
+    this._tickBlueFace(actor);
 
     // Pulse her LEDs — chest disc + antenna bulb breathe slowly while
     // visiting, flicker rapidly while pecking/playing. userData is set
@@ -2259,6 +2255,116 @@ export class World {
     if (!blue) return;
     blue._blue = blue._blue || { mode: "visiting", toyIdx: 0, arrivedAt: 0, lingerMs: 1800, attentionUntil: 0 };
     blue._blue.attentionUntil = performance.now() + durMs;
+    // Triple-blink: little surprised reaction when you call her.
+    blue._blinkNextAt = performance.now() + 80;
+  }
+
+  // Per-frame face animation for Blue:
+  //  - Look at the camera continuously while visiting (no more wandering
+  //    circles around the visit spot — she actually faces you).
+  //  - Periodic blink + on attention / sleep.
+  //  - Eye glow color tracks mood (happy=cyan, hungry=warm, sad=blue-grey,
+  //    sleeping=dim). Brightness pulses gently.
+  //  - Beak nods on idle and pops open during emotes.
+  _tickBlueFace(actor) {
+    const m = actor.mesh;
+    const ud = m.userData || {};
+    const now = performance.now();
+    const mode = actor._blue && actor._blue.mode;
+
+    // ---- LOOK AT YOU ------------------------------------------------------
+    // When visiting (idle at the visit spot), continuously aim her facing
+    // at the camera so she actually meets your eye. The wander head-drift
+    // is suppressed for the visiting mode (handled in _tickBlue), so this
+    // is the authoritative facing.
+    if (mode === "visiting") {
+      const dx = this.camera.position.x - m.position.x;
+      const dz = this.camera.position.z - m.position.z;
+      // Slow lerp so it doesn't snap; feels like a head-track.
+      const target = Math.atan2(dz, dx);
+      const cur = actor.heading;
+      let diff = target - cur;
+      while (diff >  Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      actor.heading = cur + diff * 0.08;
+      m.rotation.y = -actor.heading + Math.PI / 2;
+    }
+
+    // ---- BLINK ------------------------------------------------------------
+    // Squash both eye glows + sockets briefly to scale.y = 0.1. The visible
+    // duration is ~120ms. Next blink is scheduled randomly 2.5-5.5s out.
+    actor._blinkNextAt = actor._blinkNextAt || (now + 1500 + Math.random() * 2000);
+    if (now >= actor._blinkNextAt) {
+      actor._blinking = { until: now + 120 };
+      actor._blinkNextAt = now + 2500 + Math.random() * 3000;
+    }
+    const blinking = actor._blinking && now < actor._blinking.until;
+    if (ud.eyes) {
+      for (const eye of ud.eyes) {
+        const targetY = blinking ? 0.1 : 1.0;
+        eye.glow.scale.y   += (targetY - eye.glow.scale.y) * 0.5;
+        eye.socket.scale.y += (targetY - eye.socket.scale.y) * 0.5;
+      }
+    }
+
+    // ---- EXPRESSION VIA EYE COLOR + BROW TILT ----------------------------
+    // Mood maps to a target glow color AND a brow tilt that gives Blue
+    // distinct faces — happy (brows up + spread), worried (brows in + down),
+    // sleepy (lids droop), scared (brows in + up). Lerped smoothly so the
+    // change feels like a settling expression, not a flicker.
+    const moodFace = {
+      "radiant":          { color: 0xa0ff8e, browTilt: -0.35, browLift: 0.04 },  // happy: ^ ^
+      "in their element": { color: 0xb8e4ff, browTilt: -0.20, browLift: 0.02 },
+      "content":          { color: 0xb8e4ff, browTilt: -0.10, browLift: 0.0 },
+      "curious":          { color: 0xc0eaff, browTilt:  0.10, browLift: 0.03 },
+      "sleepy":           { color: 0x6b88c8, browTilt:  0.0,  browLift: -0.04, droop: 0.55 },
+      "drowsy":           { color: 0x6b88c8, browTilt:  0.0,  browLift: -0.04, droop: 0.55 },
+      "quiet":            { color: 0x5e6680, browTilt:  0.15, browLift: -0.02 },
+      "scared":           { color: 0xff7a8e, browTilt:  0.45, browLift: 0.05 },  // alarmed
+    };
+    const face = moodFace[actor.mood] || moodFace.content;
+    const target = new THREE.Color(face.color);
+    if (ud.eyes) {
+      for (let i = 0; i < ud.eyes.length; i++) {
+        const eye = ud.eyes[i];
+        eye.glow.material.color.lerp(target, 0.05);
+        // Gentle breathing brightness — opacity pulses 0.7-1.0.
+        eye.glow.material.opacity = 0.78 + Math.sin(now * 0.0025 + actor.born * 0.001) * 0.22;
+        // Sleepy droop — eyes half-closed, on top of any blink.
+        if (face.droop && !blinking) {
+          const targetY = 1 - face.droop;
+          eye.glow.scale.y   += (targetY - eye.glow.scale.y) * 0.1;
+          eye.socket.scale.y += (targetY - eye.socket.scale.y) * 0.1;
+        }
+        // Brow tilt — inner brow goes up/down depending on the eye (l vs r).
+        // i=0 is the +z (left) eye, i=1 is the -z (right) eye.
+        if (eye.brow && eye.brow.userData.basePos && eye.brow.userData.baseRot) {
+          const sign = (i === 0) ? +1 : -1;
+          const targetRotZ = eye.brow.userData.baseRot.z + face.browTilt * sign;
+          const targetPosY = eye.brow.userData.basePos.y + face.browLift;
+          eye.brow.rotation.z += (targetRotZ - eye.brow.rotation.z) * 0.1;
+          eye.brow.position.y += (targetPosY - eye.brow.position.y) * 0.1;
+        }
+      }
+    }
+
+    // ---- BEAK TWITCH ------------------------------------------------------
+    // Small nod / open on speech-like events. When attending the player
+    // (recently petted), the beak opens slightly + nods on each tap.
+    if (ud.beak && ud.beakBasePos) {
+      const open = actor._beakOpenUntil && now < actor._beakOpenUntil ? 1 : 0;
+      const targetX = ud.beakBasePos.x + open * 0.02;
+      const targetY = ud.beakBasePos.y - open * 0.015;
+      ud.beak.position.x += (targetX - ud.beak.position.x) * 0.4;
+      ud.beak.position.y += (targetY - ud.beak.position.y) * 0.4;
+    }
+  }
+
+  // Public hook: pop the beak open briefly (used by petActor / care actions).
+  openBlueBeak(ms = 220) {
+    const blue = this.actors.find((a) => a.def && a.def.isGateway);
+    if (!blue) return;
+    blue._beakOpenUntil = performance.now() + ms;
   }
 
   _blueGreet(actor) {
@@ -2590,6 +2696,12 @@ export class World {
     // Furby-style "love me" feedback: heart bubble + cluck (when the actor
     // is the chicken; everyone else gets the regular pet blip).
     this.emoteActor(actor, "💖", 1400);
+    // Blue: pop her beak open + trigger a happy double-blink so the face
+    // reads "oh! love!" instead of just hopping silently.
+    if (actor.def && actor.def.isGateway) {
+      actor._beakOpenUntil = performance.now() + 280;
+      actor._blinkNextAt   = performance.now() + 60;
+    }
     if (this.audio) {
       if (actor.id === "bluechicken" && this.audio.cluck) this.audio.cluck();
       else this.audio.pet?.();

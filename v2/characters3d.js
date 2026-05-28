@@ -78,7 +78,10 @@ function eggBase(colorHex, decorate = (g) => {}) {
 const bluechicken = {
   id: "bluechicken",
   portrait: "docs/portraits/bluechicken.png",
-  model: "docs/models/bluechicken.glb",
+  // Blue uses the procedural buildBody() — not the Tripo GLB — because her
+  // face animation system (blinking, mood-colored eyes, beak twitch) needs
+  // userData hooks the auto-generated GLB doesn't expose.
+  model: null,
   modelTargetHeight: 1.8,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
@@ -180,23 +183,48 @@ const bluechicken = {
       g.add(w);
     }
 
-    // Brass beak.
+    // Brass beak — tracked on userData so _tickBlueFace can pop it open
+    // for emotes or angle it for smile/frown.
     const beak = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 6), brassMat);
     beak.rotation.z = -Math.PI / 2;
     beak.position.set(0.42, -0.02, 0);
     g.add(beak);
+    g.userData.beak = beak;
+    g.userData.beakBasePos = beak.position.clone();
+    g.userData.beakBaseRot = beak.rotation.clone();
 
-    // Camera-eye LEDs — black sclera + glowing dot inside.
+    // Camera-eye LEDs — black sclera + glowing dot inside. Bigger than a
+    // realistic chicken eye so the player can actually read her expressions
+    // from the care-view camera distance (~7.5u away). Track each socket
+    // + glow + brow so the face animator can blink, color the glow with
+    // mood, and tilt the brow into smiles / frowns.
     const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.3, metalness: 0.6 });
     const eyeGlowMat = new THREE.MeshBasicMaterial({ color: 0xb8e4ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-    for (const z of [0.13, -0.13]) {
-      const socket = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), eyeSocketMat);
-      socket.position.set(0.30, 0.12, z);
+    const browMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.5, metalness: 0.2 });
+    const eyes = [];
+    for (const z of [0.18, -0.18]) {
+      const socket = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), eyeSocketMat.clone());
+      socket.position.set(0.32, 0.16, z);
       g.add(socket);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), eyeGlowMat);
-      glow.position.set(0.36, 0.13, z);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 10), eyeGlowMat.clone());
+      glow.position.set(0.40, 0.16, z);
       g.add(glow);
+      // White highlight dot — makes the eye feel "alive" (catchlight).
+      const hi = new THREE.Mesh(
+        new THREE.SphereGeometry(0.025, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+      );
+      hi.position.set(0.45, 0.20, z + (z > 0 ? -0.02 : 0.02));
+      g.add(hi);
+      // Brow — small dark plate above the eye that tilts to express emotion.
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.025, 0.04), browMat);
+      brow.position.set(0.36, 0.31, z);
+      brow.userData.basePos = brow.position.clone();
+      brow.userData.baseRot = brow.rotation.clone();
+      g.add(brow);
+      eyes.push({ socket, glow, hi, brow, baseScaleY: 1 });
     }
+    g.userData.eyes = eyes;
 
     // Legs — brass cylinders + tiny foot pads.
     for (const z of [0.1, -0.1]) {
