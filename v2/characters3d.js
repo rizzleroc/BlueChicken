@@ -80,6 +80,10 @@ const bluechicken = {
   portrait: "docs/portraits/bluechicken.png",
   model: "docs/models/bluechicken.glb",
   modelTargetHeight: 1.8,
+  // Tripo's default orientation puts Blue's face on -X (verified via 4-side
+  // orientation probe). Spin her 180° so face → +X, matching procedural
+  // mesh convention and putting the face widget on the actual face.
+  modelYaw: Math.PI,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
   // bump (= 4.8) made her tower over the care-view camera frame. 1.8 puts

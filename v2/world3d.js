@@ -1526,7 +1526,25 @@ export class World {
           root.position.x -= center.x;
           root.position.z -= center.z;
           root.position.y -= box2.min.y;
-          this.modelCache[c.id] = root;
+          // Normalize the GLB's forward axis to +X so it matches the
+          // procedural mesh convention (eyes / beak on +X). Without this,
+          // Tripo's natural orientation puts the chicken's face on a
+          // different axis and the face widget / heading rotations point
+          // the wrong way. charDef.modelYaw is a per-character corrective
+          // yaw applied as a wrapping group so per-frame heading updates
+          // still work cleanly (the outer wrap carries the heading; the
+          // inner root keeps the corrective offset baked in).
+          const yawOffset = (typeof c.modelYaw === "number") ? c.modelYaw : 0;
+          let mesh;
+          if (yawOffset !== 0) {
+            const wrap = new THREE.Group();
+            root.rotation.y = yawOffset;
+            wrap.add(root);
+            mesh = wrap;
+          } else {
+            mesh = root;
+          }
+          this.modelCache[c.id] = mesh;
           resolve();
         },
         undefined,
