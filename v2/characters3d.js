@@ -751,6 +751,7 @@ const pip = {
   model: "docs/models/pip.glb",
   modelTargetHeight: 1.3,
   spriteScale: 1.5,
+  flying: true,
   name: "Pip",
   role: "Sparrow with a Pocket Storm",
   story: "Pip was hatched in a thundercloud and dropped on a Tuesday. The cloud followed him home. It wasn't done telling him things.",
