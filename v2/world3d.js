@@ -2494,33 +2494,61 @@ export class World {
     if (goal.satisfies && actor._needs) {
       actor._needs[goal.satisfies] = Math.min(100, actor._needs[goal.satisfies] + 45);
     }
+    // Each interaction LINGERS visibly — multiple hops/emotes over the
+    // goal's linger so the player sees the activity, not a single bob.
+    const ground = !def.flying && !def.floating;
+    const safeHop = (a, h, d, delay) =>
+      setTimeout(() => this.actors.includes(a) && this.hopActor(a, h, d), delay);
+    const safeEmote = (a, g, delay) =>
+      setTimeout(() => this.actors.includes(a) && this.emoteActor && this.emoteActor(a, g, 1200), delay);
+
     if (goal.kind.startsWith("toy:")) {
       const kind = goal.kind.slice(4);
       if (kind === "bowl" || kind === "ball" || kind === "worm") {
-        // Peck-at: rapid head-bobs
-        if (!def.flying && !def.floating) this.hopActor(actor, -0.08, 200);
+        // Eat — 3 head-pecks over 0.8s
+        if (ground) { this.hopActor(actor, -0.08, 200); safeHop(actor, -0.08, 200, 300); safeHop(actor, -0.08, 200, 700); }
+        if (this.emoteActor) this.emoteActor(actor, "🌾", 1200);
+        safeEmote(actor, "·", 800);
         actor.joy = Math.min(1, actor.joy + 0.04);
       } else if (kind === "bale" || kind === "perch") {
-        // Hop on
-        this.hopActor(actor, 0.5, 450);
+        // Hop on, settle, hop down
+        this.hopActor(actor, 0.6, 450);
+        safeHop(actor, 0.4, 400, 800);
+        if (this.emoteActor) this.emoteActor(actor, "♬", 1400);
         actor.joy = Math.min(1, actor.joy + 0.05);
       } else if (kind === "disco") {
-        // Dance: emote burst + joy bump
-        if (this.emoteActor) {
-          this.emoteActor(actor, "♬", 1500);
-          setTimeout(() => this.emoteActor && this.emoteActor(actor, "✦", 1500), 600);
-        }
+        // Dance: 4 spinning hops + sparkles
+        if (ground) { this.hopActor(actor, 0.5, 350); safeHop(actor, 0.5, 350, 400); safeHop(actor, 0.5, 350, 800); safeHop(actor, 0.5, 350, 1200); }
+        if (this.emoteActor) this.emoteActor(actor, "♬", 1500);
+        safeEmote(actor, "✦", 500); safeEmote(actor, "★", 1000);
         actor.joy = Math.min(1, actor.joy + 0.08);
-      } else if (kind === "bed" || kind === "coop") {
-        // Rest: slight joy lift, settle
+      } else if (kind === "bed" || kind === "coop" || kind === "henhouse") {
+        // Sleep: emote chain ☾ → z → z
+        if (this.emoteActor) this.emoteActor(actor, "☾", 1500);
+        safeEmote(actor, "z", 700); safeEmote(actor, "z", 1400);
         actor.joy = Math.min(1, actor.joy + 0.03);
+      } else if (kind === "mirror") {
+        // Preen — small bob + sparkles
+        if (ground) this.hopActor(actor, -0.05, 250);
+        if (this.emoteActor) this.emoteActor(actor, "✿", 1200);
+        safeEmote(actor, "✦", 700);
+        actor.joy = Math.min(1, actor.joy + 0.04);
       } else {
         actor.joy = Math.min(1, actor.joy + 0.02);
       }
     } else if (goal.kind === "social" && goal.peer) {
-      // Heart emote + joy lift on both ends
+      // Three-beat exchange: hi → reply → mutual sparkle
       this.hopActor(actor, 0.3, 350);
       if (this.emoteActor) this.emoteActor(actor, "♡", 1200);
+      const peer = goal.peer;
+      setTimeout(() => {
+        if (this.actors.includes(peer)) {
+          this.hopActor(peer, 0.3, 350);
+          if (this.emoteActor) this.emoteActor(peer, "♡", 1200);
+        }
+      }, 500);
+      safeEmote(actor, "✦", 1100);
+      setTimeout(() => this.actors.includes(peer) && this.emoteActor && this.emoteActor(peer, "✦", 1000), 1100);
       actor.joy = Math.min(1, actor.joy + 0.04);
     } else if (goal.kind === "sun") {
       if (this.emoteActor) this.emoteActor(actor, "☀", 1300);
