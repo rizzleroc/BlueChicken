@@ -2244,6 +2244,9 @@ export class World {
     const pref = actor.def.prefersTime;
     const joyRate = (pref === "any" || pref === tname) ? 0.00004 : 0.00002;
     actor.joy = Math.min(1, actor.joy + dt * joyRate);
+    // Tick Blue's mood too — without this, a sticky "scared" from a wolf
+    // event would freeze her plumbob red forever.
+    if (typeof this._moodFor === "function") actor.mood = this._moodFor(actor);
 
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
     return true; // we handled this actor
@@ -2304,11 +2307,14 @@ export class World {
   _decayNeeds(actor, dt) {
     this._ensureNeeds(actor);
     const def = actor.def;
+    // Decay rates per second. Tuned so needs visibly cycle in 1-2 minutes —
+    // long enough that goals don't thrash, short enough that the simulator
+    // feels alive over a minute of watching. Personality multiplies.
     const RATE = {
-      hunger: def.id === "mossback" ? 0.25 : def.id === "magma" ? 0.65 : 0.4,
-      energy: def.id === "magma"    ? 0.8  : def.id === "mossback" ? 0.2 : def.flying ? 0.5 : 0.35,
-      social: def.id === "whisper"  ? 0.15 : def.id === "pip"    ? 0.6 : 0.35,
-      fun:    def.id === "ember"    ? 0.55 : 0.4,
+      hunger: def.id === "mossback" ? 0.7  : def.id === "magma" ? 1.6 : 1.0,
+      energy: def.id === "magma"    ? 1.8  : def.id === "mossback" ? 0.5 : def.flying ? 1.3 : 0.9,
+      social: def.id === "whisper"  ? 0.4  : def.id === "pip"    ? 1.4 : 0.9,
+      fun:    def.id === "ember"    ? 1.3  : 1.0,
     };
     const s = dt / 1000;
     actor._needs.hunger = Math.max(0, actor._needs.hunger - RATE.hunger * s);
