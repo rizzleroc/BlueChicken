@@ -1719,6 +1719,11 @@ export class World {
     // spriteScale; sprite-actors keep their own internal sprite.scale).
     actor.baseScale = mesh.scale.x;
     this._buildMoodPlumbob(actor);
+    // Blue gets an animated face widget parented to her body mesh — works
+    // whether her body is the Tripo GLB or the procedural fallback. The
+    // widget carries the eyes / brows / catchlights that the face animator
+    // (_tickBlueFace) drives every frame.
+    if (charDef.isGateway) this._attachFaceWidget(actor);
     this.actors.push(actor);
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
     // Respect the current view mode — a prize actor hatching during care view
@@ -1880,6 +1885,82 @@ export class World {
     m.traverse((c) => { if (c.isMesh || c.isSprite) c.userData.actorRef = m; });
     this.scene.add(m);
     actor.mesh = m;
+    actor.baseScale = m.scale.x;
+    // Reattach Blue's face widget — the new GLB body needs it too.
+    if (actor.def.isGateway) this._attachFaceWidget(actor);
+  }
+
+  // Build + parent Blue's animated face overlay to her body mesh. Works
+  // for both the Tripo GLB body and the procedural fallback — the widget
+  // sits in front of her body at face height. The face animator
+  // (_tickBlueFace) reads m.userData.eyes / .beak from these refs.
+  //
+  // Camera-eye LEDs: sclera + glow + white catchlight + brow per side.
+  // We place them at a sensible "front" position; m.rotation.y (driven
+  // by actor.heading) means the widget always faces the actor's heading
+  // — which the look-at-camera lerp aims at the camera while visiting,
+  // so the eyes end up facing the player.
+  _attachFaceWidget(actor) {
+    const m = actor.mesh;
+    // Remove any prior widget (rebuildActor scenario).
+    if (m.userData && m.userData.faceWidget) {
+      m.remove(m.userData.faceWidget);
+    }
+
+    // Local-space scale is 1/m.scale because m is pre-scaled — we want the
+    // widget to land at a fixed *world* size regardless.
+    const inv = 1 / (m.scale.x || 1);
+    const widget = new THREE.Group();
+    widget.name = "blue-face";
+    widget.scale.setScalar(inv);
+    // Position the widget in front of Blue (+X local), at head height. The
+    // GLB is normalized to height = modelTargetHeight (1.8), so head ~ 1.5
+    // in world units, which is 1.5/m.scale in local.
+    widget.position.set(0.55 * inv, 1.05 * inv, 0);
+    m.add(widget);
+
+    const socketMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.3, metalness: 0.6 });
+    const glowMat   = new THREE.MeshBasicMaterial({ color: 0xb8e4ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false });
+    const hiMat     = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+    const browMat   = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.5, metalness: 0.2 });
+
+    const eyes = [];
+    for (const z of [0.20, -0.20]) {
+      const socket = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 12), socketMat.clone());
+      socket.position.set(0, 0, z);
+      socket.renderOrder = 5;
+      widget.add(socket);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.085, 14, 10), glowMat.clone());
+      glow.position.set(0.05, 0, z);
+      glow.renderOrder = 6;
+      widget.add(glow);
+      const hi = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), hiMat.clone());
+      hi.position.set(0.10, 0.04, z + (z > 0 ? -0.025 : 0.025));
+      hi.renderOrder = 7;
+      widget.add(hi);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.035, 0.05), browMat.clone());
+      brow.position.set(0.04, 0.20, z);
+      brow.userData.basePos = brow.position.clone();
+      brow.userData.baseRot = brow.rotation.clone();
+      brow.renderOrder = 5;
+      widget.add(brow);
+      eyes.push({ socket, glow, hi, brow });
+    }
+
+    // Beak — small brass cone in front of the eyes.
+    const beak = new THREE.Mesh(
+      new THREE.ConeGeometry(0.09, 0.22, 6),
+      new THREE.MeshStandardMaterial({ color: 0xffc35a, roughness: 0.45, metalness: 0.7 }),
+    );
+    beak.rotation.z = -Math.PI / 2;
+    beak.position.set(0.18, -0.18, 0);
+    widget.add(beak);
+
+    m.userData.faceWidget = widget;
+    m.userData.eyes = eyes;
+    m.userData.beak = beak;
+    m.userData.beakBasePos = beak.position.clone();
+    m.userData.beakBaseRot = beak.rotation.clone();
   }
 
   // Priority: GLB (Tripo model in /docs/models/ — best fidelity when present)
