@@ -33,8 +33,65 @@
       btnRealm.classList.remove("active");
     }
   }
-  btnMain.onclick  = () => showView("main");
-  btnRealm.onclick = () => showView("realm");
+  btnMain.onclick  = () => {
+    showView("main");
+    bumpInteraction();
+    idleSetUserOverride();
+  };
+  btnRealm.onclick = () => {
+    showView("realm");
+    bumpInteraction();
+    idleSetUserOverride();
+  };
+
+  // ---- Idle auto-switch (Cluckbot drifts into the realm) -----------------
+  // When the user stops interacting with the barnyard for ~30 seconds, the
+  // shell auto-swings to the realm so the chicken visibly wanders into her
+  // 3D world. Any interaction (click / move / key / scroll) AND any view
+  // toggle pulls it back to the barnyard.
+  //
+  // We respect a manual override: if the user explicitly clicks REALM, we
+  // don't yank them back to barnyard on their next idle. The override
+  // resets the moment they switch back to BARNYARD or interact in V1.
+  const IDLE_TO_REALM_MS = 30000;
+  let lastInteractionAt = performance.now();
+  let userOverride = null; // "main" | "realm" | null
+  function bumpInteraction() { lastInteractionAt = performance.now(); }
+  function idleSetUserOverride() {
+    userOverride = document.body.classList.contains("show-realm") ? "realm" : "main";
+  }
+  // Hook every input source we can. The V1 + realm iframes are same-origin,
+  // so we can attach to their windows too (init runs once they're loaded).
+  function attachIdleListeners(win) {
+    const types = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"];
+    for (const t of types) win.addEventListener(t, bumpInteraction, { passive: true });
+  }
+  attachIdleListeners(window);
+  for (const id of ["frame-main", "frame-realm"]) {
+    const fr = document.getElementById(id);
+    fr.addEventListener("load", () => {
+      try { attachIdleListeners(fr.contentWindow); } catch (_) {}
+    });
+    // If already loaded by the time we run, attach now too.
+    try { attachIdleListeners(fr.contentWindow); } catch (_) {}
+  }
+  // Idle ticker — checks every second.
+  setInterval(() => {
+    const idleMs = performance.now() - lastInteractionAt;
+    const inRealm = document.body.classList.contains("show-realm");
+    if (idleMs > IDLE_TO_REALM_MS) {
+      // Swing into realm (unless the user explicitly chose main and we're
+      // already on the user's choice).
+      if (!inRealm && userOverride !== "main") {
+        showView("realm");
+      }
+    } else if (idleMs < 1500) {
+      // Just woke up — if we drifted into realm by idle, bring them back.
+      if (inRealm && userOverride !== "realm") {
+        showView("main");
+      }
+    }
+  }, 1000);
 
   // ---- V1 → Realm egg pipeline -------------------------------------------
   // V1 increments pet.eggsLaid whenever Cluckbot lays an egg (see
@@ -154,6 +211,17 @@
   };
   const flockSprites = new Map(); // id -> { el, x, y, needs, mood, ... }
 
+  // Barnyard floor — sprites are confined here so they never overlap with
+  // V1's modal in the center or topbar at the top. Bottom 35% of the
+  // viewport, with margin from the view-switch + notices at the bottom.
+  function floorBounds() {
+    const W = window.innerWidth, H = window.innerHeight;
+    return {
+      x0: 30, x1: W - 30,
+      y0: Math.floor(H * 0.62),
+      y1: H - 200, // leave room for view-switch + notice stack
+    };
+  }
   function spawnFlockSprite(g, fresh) {
     if (flockSprites.has(g.id)) return;
     const img = document.createElement("img");
@@ -165,23 +233,27 @@
       ? new URL(g.portrait, location.href.replace(/[^\/]+$/, "")).href
       : "";
     flockLayer.appendChild(img);
-    const W = window.innerWidth, H = window.innerHeight;
+    const b = floorBounds();
     const s = {
       g, el: img,
-      x: 80 + Math.random() * (W - 160),
-      y: 140 + Math.random() * (H - 340),
+      x: b.x0 + Math.random() * (b.x1 - b.x0),
+      y: b.y0 + Math.random() * (b.y1 - b.y0),
       target: null, lastEmoteAt: 0, lastHopAt: 0,
       needs: { hunger: 70 + Math.random() * 30, energy: 70 + Math.random() * 30,
                fun: 60 + Math.random() * 30, social: 60 + Math.random() * 30 },
       mood: "happy",
     };
-    img.addEventListener("click", () => onPlayerInteract(s));
+    img.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      onPlayerInteract(s);
+    });
     flockSprites.set(g.id, s);
     place(s);
   }
 
+  // 44px sprites with center-offset 22px
   function place(s) {
-    s.el.style.transform = `translate(${s.x - 28}px, ${s.y - 28}px)`;
+    s.el.style.transform = `translate(${s.x - 22}px, ${s.y - 22}px)`;
   }
 
   function moodFrom(needs) {
@@ -210,9 +282,9 @@
   }
   function hop(s) {
     s.el.animate(
-      [{ transform: `translate(${s.x - 28}px, ${s.y - 28}px)` },
-       { transform: `translate(${s.x - 28}px, ${s.y - 28 - 20}px)` },
-       { transform: `translate(${s.x - 28}px, ${s.y - 28}px)` }],
+      [{ transform: `translate(${s.x - 22}px, ${s.y - 22}px)` },
+       { transform: `translate(${s.x - 22}px, ${s.y - 22 - 18}px)` },
+       { transform: `translate(${s.x - 22}px, ${s.y - 22}px)` }],
       { duration: 380, easing: "ease-out" }
     );
     s.lastHopAt = performance.now();
@@ -225,7 +297,7 @@
     hop(s);
   }
   function pickTarget(s) {
-    const W = window.innerWidth, H = window.innerHeight;
+    const b = floorBounds();
     const need = Object.entries(s.needs).sort((a, b) => a[1] - b[1])[0];
     const [worstName] = need;
     if (worstName === "social" && flockSprites.size > 1) {
@@ -234,8 +306,8 @@
       s.target = { x: peer.x, y: peer.y, kind: "social", peer };
     } else {
       s.target = {
-        x: 80 + Math.random() * (W - 160),
-        y: 140 + Math.random() * (H - 340),
+        x: b.x0 + Math.random() * (b.x1 - b.x0),
+        y: b.y0 + Math.random() * (b.y1 - b.y0),
         kind: worstName,
       };
     }
@@ -250,7 +322,7 @@
       if (!s.target) pickTarget(s);
       const dx = s.target.x - s.x, dy = s.target.y - s.y;
       const dist = Math.hypot(dx, dy);
-      const speed = 0.06;
+      const speed = 0.11; // px/ms = 110 px/s, visibly moving
       if (dist > 4) {
         s.x += (dx / dist) * speed * dt;
         s.y += (dy / dist) * speed * dt;
@@ -274,6 +346,10 @@
         const set = MOOD_EMOTES[s.mood] || MOOD_EMOTES.happy;
         emote(s, set[Math.floor(Math.random() * set.length)]);
       }
+      // Clamp to current floor bounds — handles window resize / rotation.
+      const b = floorBounds();
+      s.x = Math.max(b.x0, Math.min(b.x1, s.x));
+      s.y = Math.max(b.y0, Math.min(b.y1, s.y));
       place(s);
     }
     requestAnimationFrame(tick);
