@@ -273,13 +273,66 @@ canvas.addEventListener("pointerdown", (ev) => {
 
 // Hover cursor — make eggs/actors discoverable: when the pointer crosses one,
 // the cursor turns into a pointer so the user reads "this is clickable."
+// Hover tooltip showing what an actor is currently "thinking" — exposes
+// the AI: the goal it picked, the need driving it, its current mood.
+const hoverTip = document.createElement("div");
+hoverTip.id = "hover-tip";
+hoverTip.style.cssText = `
+  position: fixed; pointer-events: none;
+  background: rgba(20,12,32,.92); border: 1px solid rgba(255,255,255,.16);
+  border-radius: 10px; padding: 8px 12px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: #f7f3ff; letter-spacing: .04em; line-height: 1.5;
+  backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow: 0 8px 24px -8px rgba(0,0,0,.7);
+  z-index: 9000; opacity: 0; transition: opacity .15s ease;
+  max-width: 240px;
+`;
+document.body.appendChild(hoverTip);
+
+function showHoverTip(actor, ev) {
+  const def = actor.def;
+  const goalLine = actor._goal ? `→ ${actor._goal.kind}${actor._goal.satisfies ? ` (${actor._goal.satisfies})` : ""}` : "(idle)";
+  const moodLine = actor.mood || "—";
+  let needsLine = "";
+  if (actor._needs) {
+    const n = actor._needs;
+    const bar = (v) => "█".repeat(Math.max(1, Math.floor(v / 12)));
+    needsLine = `
+      <div style="margin-top:6px; font-size:10px; color:#cfc3e8;">
+        hunger ${bar(n.hunger)} ${Math.floor(n.hunger)}<br/>
+        energy ${bar(n.energy)} ${Math.floor(n.energy)}<br/>
+        social ${bar(n.social)} ${Math.floor(n.social)}<br/>
+        fun    ${bar(n.fun)} ${Math.floor(n.fun)}
+      </div>`;
+  }
+  hoverTip.innerHTML = `
+    <div style="font-family:'Instrument Serif', serif; font-size:15px; color:#fff; letter-spacing:0;">${actor.name}</div>
+    <div style="color:#ff9be3; font-size:9px; letter-spacing:.22em; text-transform:uppercase; margin:2px 0 4px;">${def.role || ""}</div>
+    <div style="color:#7fe9ff;">${goalLine}</div>
+    <div style="color:#ffd57f; font-style:italic;">${moodLine}</div>
+    ${needsLine}
+  `;
+  hoverTip.style.left = `${Math.min(ev.clientX + 16, window.innerWidth - 260)}px`;
+  hoverTip.style.top  = `${Math.min(ev.clientY + 16, window.innerHeight - 180)}px`;
+  hoverTip.style.opacity = "1";
+}
+function hideHoverTip() { hoverTip.style.opacity = "0"; }
+
 canvas.addEventListener("pointermove", (ev) => {
   if (!drag) {
     setPointer(ev);
     const hit = pickAtPointer();
     canvas.style.cursor = hit ? "pointer" : "default";
+    if (hit && hit.kind === "actor") {
+      const actor = world.actors.find((a) => a.mesh === hit.obj);
+      if (actor) showHoverTip(actor, ev); else hideHoverTip();
+    } else {
+      hideHoverTip();
+    }
     return;
   }
+  hideHoverTip();
   const dx = ev.clientX - drag.startX;
   const dy = ev.clientY - drag.startY;
   if (Math.hypot(dx, dy) > 6) drag.moved = true;
