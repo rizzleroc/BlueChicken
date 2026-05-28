@@ -78,10 +78,7 @@ function eggBase(colorHex, decorate = (g) => {}) {
 const bluechicken = {
   id: "bluechicken",
   portrait: "docs/portraits/bluechicken.png",
-  // Blue uses the procedural buildBody() — not the Tripo GLB — because her
-  // face animation system (blinking, mood-colored eyes, beak twitch) needs
-  // userData hooks the auto-generated GLB doesn't expose.
-  model: null,
+  model: "docs/models/bluechicken.glb",
   modelTargetHeight: 1.8,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
