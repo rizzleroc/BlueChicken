@@ -2052,11 +2052,9 @@ export class World {
     // left alone (VALLEY view, or after enough idle seconds in CARE).
     if (def.isGateway && this._tickBlue(actor, dt)) return;
 
-    // Every other actor gets goal-directed behavior. They pick a GOAL every
-    // 5-15 seconds (visit a toy, approach a peer, retreat to a quiet spot,
-    // sun themselves at a preferred time, etc.), walk toward it, then emote
-    // their thought on arrival. This is what makes the valley feel alive
-    // instead of "everyone wanders randomly forever."
+    // Every other actor gets goal-directed behavior — needs decay over time
+    // and pull them toward a goal that fixes the most-pressing need.
+    this._decayNeeds(actor, dt);
     this._pickActorGoal(actor);
     const goalSpeed = this._steerToGoal(actor, dt);
     // Wander fall-through — used only when no goal selected this frame.
@@ -2288,79 +2286,136 @@ export class World {
   }
 
   // ------------------------------------------------------------------
-  // Generic goal-directed AI for all non-Blue actors. Every 5-15s they
-  // pick a goal based on personality + time + nearby props/peers and
-  // walk toward it, emoting a thought on arrival. The goal lives at
-  // actor._goal = { pos, kind, arrivedAt, lingerMs, peer? }. When no
-  // goal is set we fall through to the wander code in _tickActor.
+  // Per-actor needs that decay over time and DRIVE goal selection — the
+  // Sims trick that turns wander into "I'm hungry, I should eat." Each
+  // actor has hunger/energy/social/fun in [0, 100]. Decay rates vary by
+  // personality (Magma burns energy fast, Mossback dozes slowly, Whisper
+  // hates company so social drains slowly, Pip thrives on it).
   // ------------------------------------------------------------------
+  _ensureNeeds(actor) {
+    if (actor._needs) return;
+    actor._needs = {
+      hunger: 60 + Math.random() * 30,
+      energy: 60 + Math.random() * 30,
+      social: 60 + Math.random() * 30,
+      fun:    60 + Math.random() * 30,
+    };
+  }
+  _decayNeeds(actor, dt) {
+    this._ensureNeeds(actor);
+    const def = actor.def;
+    const RATE = {
+      hunger: def.id === "mossback" ? 0.25 : def.id === "magma" ? 0.65 : 0.4,
+      energy: def.id === "magma"    ? 0.8  : def.id === "mossback" ? 0.2 : def.flying ? 0.5 : 0.35,
+      social: def.id === "whisper"  ? 0.15 : def.id === "pip"    ? 0.6 : 0.35,
+      fun:    def.id === "ember"    ? 0.55 : 0.4,
+    };
+    const s = dt / 1000;
+    actor._needs.hunger = Math.max(0, actor._needs.hunger - RATE.hunger * s);
+    actor._needs.energy = Math.max(0, actor._needs.energy - RATE.energy * s);
+    actor._needs.social = Math.max(0, actor._needs.social - RATE.social * s);
+    actor._needs.fun    = Math.max(0, actor._needs.fun    - RATE.fun    * s);
+    // Joy is the average need / 100 — smoothed so it doesn't oscillate.
+    const avg = (actor._needs.hunger + actor._needs.energy + actor._needs.social + actor._needs.fun) / 400;
+    actor.joy = actor.joy * 0.96 + avg * 0.04;
+  }
+
+  // Each tick: pick a goal weighted by which need is most pressing. A hungry
+  // actor prefers the feed bowl; a sleepy actor heads to the bed; a lonely
+  // actor goes find a peer. Goals carry which need they satisfy so the goal
+  // resolver can refill that need.
   _pickActorGoal(actor) {
     const now = performance.now();
     if (actor._goal && now < (actor._goalDeadline || 0)) return;
     if (actor._goalNextAt && now < actor._goalNextAt) return;
-    actor._goalNextAt = now + rand(4500, 14000); // schedule next reconsideration
+    actor._goalNextAt = now + rand(4500, 14000);
 
+    this._ensureNeeds(actor);
     const def = actor.def;
     const tname = this.timeName();
     const prefers = def.prefersTime;
-    const m = actor.mesh;
     const isFlyOrFloat = def.flying || def.floating;
-
-    // Personality-weighted goal pool. Each entry returns a goal or null.
+    const n = actor._needs;
     const candidates = [];
 
-    // 1. Visit a toy in the barn — props the user bought. Ground walkers
-    //    pick toys with their natural interaction (peck, hop, preen).
-    //    Sprite/sky creatures hover over toys instead of landing.
-    if (this.toys && this.toys.length > 0 && Math.random() < 0.55) {
-      const t = this.toys[Math.floor(Math.random() * this.toys.length)];
-      candidates.push({ pos: t.pos.clone(), kind: "toy:" + t.label, lingerMs: 1400 + Math.random() * 1800 });
+    // 1. Toys — choose ones whose interaction satisfies a felt need.
+    //    Bowl/worm/ball → hunger. Bed/coop/perch/henhouse → energy. The
+    //    rest map to fun. Weight is `(100 - need) / 100` — the hungrier
+    //    you are, the more bowls dominate the pool.
+    if (this.toys && this.toys.length > 0) {
+      for (const t of this.toys) {
+        const label = t.label;
+        const satisfies =
+          (label === "bowl" || label === "worm" || label === "ball") ? "hunger" :
+          (label === "bed"  || label === "coop" || label === "perch" || label === "henhouse") ? "energy" :
+          "fun";
+        const weight = ((100 - n[satisfies]) / 100) * (1 + Math.random() * 0.4);
+        if (weight > 0.05) {
+          candidates.push({
+            weight,
+            goal: { pos: t.pos.clone(), kind: "toy:" + label, satisfies,
+                    lingerMs: 1500 + Math.random() * 2000 },
+          });
+        }
+      }
     }
 
-    // 2. Approach a peer (social) — flyers/floaters skip this and pick from
-    //    the air pool instead. _tickSocial handles the deeper "did we hug" bit.
-    if (!isFlyOrFloat && this.actors.length > 1 && Math.random() < 0.35) {
+    // 2. Social — approach a peer. Ground walkers only (flyers/floaters can't
+    //    meaningfully meet on the ground). Weighted by social-need deficit.
+    if (!isFlyOrFloat && this.actors.length > 1) {
       const peers = this.actors.filter((p) => p !== actor && !p.def.flying && !p.def.floating);
       if (peers.length > 0) {
         const peer = peers[Math.floor(Math.random() * peers.length)];
+        const weight = ((100 - n.social) / 100) * (1 + Math.random() * 0.3);
         candidates.push({
-          pos: peer.mesh.position.clone(),
-          kind: "social",
-          peer,
-          lingerMs: 1500 + Math.random() * 1500,
+          weight,
+          goal: { pos: peer.mesh.position.clone(), kind: "social", peer,
+                  satisfies: "social", lingerMs: 1500 + Math.random() * 1500 },
         });
       }
     }
 
-    // 3. Sun spot / shade — preferred time of day pulls them toward open
-    //    space; opposite time of day pulls them toward the coop's shade.
-    if (prefers && prefers !== "any" && Math.random() < 0.3) {
+    // 3. Sun / shade — time-of-day preference. Sun in your time = fun; shade
+    //    out of your time = energy (resting in the coop).
+    if (prefers && prefers !== "any") {
       const inMyTime = (prefers === tname);
       const ang = Math.random() * Math.PI * 2;
       const r  = inMyTime ? 6 + Math.random() * 6 : 3 + Math.random() * 2;
-      const x  = inMyTime ? Math.cos(ang) * r : -2 + Math.random() * 4; // open vs near coop
+      const x  = inMyTime ? Math.cos(ang) * r : -2 + Math.random() * 4;
       const z  = inMyTime ? Math.sin(ang) * r : -3 + Math.random() * 2;
+      const satisfies = inMyTime ? "fun" : "energy";
+      const weight = ((100 - n[satisfies]) / 100) * (inMyTime ? 0.6 : 0.8);
       candidates.push({
-        pos: new THREE.Vector3(x, 0, z),
-        kind: inMyTime ? "sun" : "shade",
-        lingerMs: 2000 + Math.random() * 2500,
+        weight,
+        goal: { pos: new THREE.Vector3(x, 0, z),
+                kind: inMyTime ? "sun" : "shade", satisfies,
+                lingerMs: 2000 + Math.random() * 2500 },
       });
     }
 
-    // 4. Wander to a random spot (default). Always present as a fallback.
+    // 4. Wander — fallback at a small fixed weight so the actor never stalls.
     {
       const ang = Math.random() * Math.PI * 2;
       const r = 3 + Math.random() * 8;
       candidates.push({
-        pos: new THREE.Vector3(Math.cos(ang) * r, 0, Math.sin(ang) * r),
-        kind: "wander",
-        lingerMs: 800 + Math.random() * 1200,
+        weight: 0.15,
+        goal: { pos: new THREE.Vector3(Math.cos(ang) * r, 0, Math.sin(ang) * r),
+                kind: "wander", satisfies: "fun",
+                lingerMs: 800 + Math.random() * 1200 },
       });
     }
 
-    const goal = candidates[Math.floor(Math.random() * candidates.length)];
-    actor._goal = goal;
-    actor._goalDeadline = now + 20000; // hard limit so a stale goal doesn't pin them
+    // Weighted pick: roulette.
+    let total = 0;
+    for (const c of candidates) total += c.weight;
+    let r = Math.random() * total;
+    let chosen = candidates[candidates.length - 1].goal;
+    for (const c of candidates) {
+      r -= c.weight;
+      if (r <= 0) { chosen = c.goal; break; }
+    }
+    actor._goal = chosen;
+    actor._goalDeadline = now + 20000;
     // Emote a "thought" — what's on their mind. Strong signal that the AI
     // is *thinking*, not just moving randomly. emoteActor throttles itself.
     const thought = ({
@@ -2376,7 +2431,7 @@ export class World {
       "sun":          "☀",
       "shade":        "☾",
       "wander":       "✦",
-    }[goal.kind] || "·");
+    }[chosen.kind] || "·");
     if (this.emoteActor) this.emoteActor(actor, thought, 1400);
   }
 
@@ -2429,6 +2484,10 @@ export class World {
 
   _actorInteractAtGoal(actor, goal) {
     const def = actor.def;
+    // Refill the need this goal satisfies.
+    if (goal.satisfies && actor._needs) {
+      actor._needs[goal.satisfies] = Math.min(100, actor._needs[goal.satisfies] + 45);
+    }
     if (goal.kind.startsWith("toy:")) {
       const kind = goal.kind.slice(4);
       if (kind === "bowl" || kind === "ball" || kind === "worm") {
