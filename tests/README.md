@@ -21,8 +21,9 @@ ln -s /opt/node22/lib/node_modules/playwright-core  node_modules/playwright-core
 
 # Serve the repo root and run:
 python3 -m http.server 8765 &
-node tests/playtest.mjs       http://127.0.0.1:8765/realm.html
-node tests/sim-cognition.mjs  http://127.0.0.1:8765/realm.html
+node tests/playtest.mjs        http://127.0.0.1:8765/realm.html
+node tests/sim-cognition.mjs   http://127.0.0.1:8765/realm.html
+node tests/face-orientation.mjs http://127.0.0.1:8765/realm.html
 ```
 
 Each exits `0` only if its assertions pass and no app-level console/page
@@ -60,6 +61,22 @@ genuinely need-driven, not random wander:
 - **E. Neglect has stakes** — pin a need critical and joy sinks while mood
   reads the body's loudest signal (`hungry` / `exhausted` / `lonely` /
   `restless`); relieve it and joy recovers toward radiant.
+
+## `face-orientation.mjs` — cast faces its movement direction
+
+Guards the "characters facing away" class of bug. Every walking/flying actor
+must face the direction it MOVES. The per-frame rotation
+`mesh.rotation.y = -heading + π/2` assumes a model authored facing +Z; each
+GLB's real front is corrected by `modelYaw` in `characters3d.js`. A wrong or
+missing `modelYaw` leaves a model facing 90°/180° off its path.
+
+The test spawns the full cast, lets it wander **freely** (nothing forced),
+then reads each actor's true world facing straight off its live `matrixWorld`
+and compares it to the actor's heading. A model is authored facing local −X
+(the prize cast) or local −Z (Blue); whichever candidate aligns with heading
+is its real front. Exits `0` only if every actor's `face − heading` is within
+6°. NOTE: actors face their *travel* direction, not the camera — a character
+walking toward the back of the meadow correctly shows its back.
 
 A separate manual soak (not committed) free-runs the valley at 10× for ~2
 sim-minutes and confirms no NaN positions, needs stay in `[0,100]`, joy in

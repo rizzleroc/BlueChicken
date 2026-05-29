@@ -48,6 +48,23 @@ model's front to be +Z. The prize GLBs were authored facing −X and had no
 double-faced). Since facing is continuous in heading, correct at one heading ⇒
 correct at all.
 
+**Unforced free-wander measurement** (2026-05-29 re-check, no rotation forced —
+world face direction read straight from each actor's live `matrixWorld`,
+compared to actual heading/velocity). `face − heading` should be 0°:
+
+| character | true front axis | face − heading | verdict |
+|-----------|-----------------|---------------:|---------|
+| bluechicken | −Z | 0° | faces movement ✓ |
+| magma / glimmer / ember / mossback / whisper | −X | 0° | faces movement ✓ |
+| aurora (fly) / pip (fly) / bubble (float) | −X | 0° | faces movement ✓ |
+
+So every actor faces the exact direction it travels. NOTE: characters face
+their **movement direction**, not the camera — a character walking toward the
+back of the meadow correctly shows its back. That is expected, not the bug;
+the bug (face 90° off the travel path) is gone. If a future regression makes
+the cast face away from travel again, run `node tests/face-orientation.mjs`
+(committed regression guard) — it fails on any non-zero `face − heading`.
+
 ---
 
 ## 🟢 Done
