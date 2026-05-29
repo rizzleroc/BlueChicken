@@ -57,8 +57,8 @@ correct at all.
 - **3D mountains** — billboard sprites → faceted low-poly snow-capped peaks
   (ring of 18 + center peak) that catch sun + moonlit rim and recede into fog.
   Verified day/dusk; zero errors.
-
-## 🔴 Remaining (set-dressing to 3D — in progress)
-
-- **Barn** — still a flat box; add eaves/overhang, gable end-caps, door frame.
-- **Hay bales** — plain cylinders; add twine banding + rolled-straw end caps.
+- **Barn** — flat box + two floating roof planks → solid extruded gable-prism
+  roof (sloped faces + gable ends + eaves), ridge cap, corner posts, framed
+  door + window. Verified care view; zero errors.
+- **Hay bales** — plain cylinders → rolled bales with twine banding + lighter
+  rolled-straw end caps. Verified; Blue's hop-on-bale toys still aligned.
