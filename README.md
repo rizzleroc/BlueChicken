@@ -48,6 +48,26 @@ start index.html            # Windows
 - Free-look camera: drag to orbit, scroll to zoom.
 - Each hatchling wanders, prefers different times of day, and reacts to petting and dragging. Aurora cruises in the air; Bubble drifts above the pond.
 
+## The thinking — a real needs-driven mind
+
+Every hatchling in the valley runs a genuine perceive → decide → act → satisfy
+loop, not a random walk. Each carries four felt needs — **hunger, energy,
+social, fun** — that decay over time at personality-specific rates (Magma
+burns energy fast; Mossback dozes slowly; Whisper is a loner; Pip thrives on
+company). On each decision the actor weighs what it *could* do by how much that
+would relieve its most-pressing need (utility ∝ deficit², softmax-sampled so
+it's lifelike rather than robotic), commits to the winning goal, and pursues it
+until satisfied — then thinks again. The choice is **count-unbiased**: four hay
+bales can't out-vote the one coop when the actor is actually exhausted, so a
+tired hatchling rests instead of playing.
+
+Joy honestly tracks wellbeing — a well-run actor drifts toward radiant, a
+critically starved one visibly suffers and its mood reads the loudest signal
+(`hungry` / `exhausted` / `lonely` / `restless`). Hover any hatchling to read
+its mind: the first-person thought it's acting on, its current goal and the
+need driving it, its mood, and live need bars. `tests/sim-cognition.mjs` asserts
+all of this end-to-end in headless Chromium.
+
 ## Events that visit on their own
 
 A scheduler picks one of these every 25–55 seconds (no overlap):

@@ -306,9 +306,13 @@ function showHoverTip(actor, ev) {
         fun    ${bar(n.fun)} ${Math.floor(n.fun)}
       </div>`;
   }
+  const thoughtLine = actor._thought
+    ? `<div style="color:#b9ffcf; font-size:11px; margin:2px 0 4px;">“${actor._thought}”</div>`
+    : "";
   hoverTip.innerHTML = `
     <div style="font-family:'Instrument Serif', serif; font-size:15px; color:#fff; letter-spacing:0;">${actor.name}</div>
     <div style="color:#ff9be3; font-size:9px; letter-spacing:.22em; text-transform:uppercase; margin:2px 0 4px;">${def.role || ""}</div>
+    ${thoughtLine}
     <div style="color:#7fe9ff;">${goalLine}</div>
     <div style="color:#ffd57f; font-style:italic;">${moodLine}</div>
     ${needsLine}

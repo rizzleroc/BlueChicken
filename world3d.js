@@ -2273,6 +2273,8 @@ export class World {
       // Pick a fresh toy each time she enters playing — keeps her moving.
       if (s.mode === "playing") s.toyIdx = Math.floor(Math.random() * this.toys.length);
     }
+    // Blue's legible thought, so the hover tip reads her mind too.
+    actor._thought = (s.mode === "visiting") ? "watching you" : "pottering about the coop";
 
     // Choose a target position for this frame.
     const target = (s.mode === "visiting")
@@ -2512,82 +2514,157 @@ export class World {
   _decayNeeds(actor, dt) {
     this._ensureNeeds(actor);
     const def = actor.def;
+    const isAir = def.flying || def.floating;
     // Decay rates per second. Tuned so needs visibly cycle in 1-2 minutes —
     // long enough that goals don't thrash, short enough that the simulator
-    // feels alive over a minute of watching. Personality multiplies.
+    // feels alive over a minute of watching. Personality multiplies. Flyers
+    // and floaters can't meet peers on the ground, so their social need is
+    // pinned (they keep company with the sky) — otherwise it would starve
+    // with no way to refill and drag their joy down forever.
     const RATE = {
       hunger: def.id === "mossback" ? 0.7  : def.id === "magma" ? 1.6 : 1.0,
       energy: def.id === "magma"    ? 1.8  : def.id === "mossback" ? 0.5 : def.flying ? 1.3 : 0.9,
-      social: def.id === "whisper"  ? 0.4  : def.id === "pip"    ? 1.4 : 0.9,
+      social: isAir ? 0 : def.id === "whisper" ? 0.4 : def.id === "pip" ? 1.4 : 0.9,
       fun:    def.id === "ember"    ? 1.3  : 1.0,
     };
     const s = dt / 1000;
-    actor._needs.hunger = Math.max(0, actor._needs.hunger - RATE.hunger * s);
-    actor._needs.energy = Math.max(0, actor._needs.energy - RATE.energy * s);
-    actor._needs.social = Math.max(0, actor._needs.social - RATE.social * s);
-    actor._needs.fun    = Math.max(0, actor._needs.fun    - RATE.fun    * s);
-    // Joy is the average need / 100 — smoothed so it doesn't oscillate.
-    const avg = (actor._needs.hunger + actor._needs.energy + actor._needs.social + actor._needs.fun) / 400;
-    actor.joy = actor.joy * 0.96 + avg * 0.04;
+    const n = actor._needs;
+    n.hunger = Math.max(0, n.hunger - RATE.hunger * s);
+    n.energy = Math.max(0, n.energy - RATE.energy * s);
+    n.social = Math.max(0, n.social - RATE.social * s);
+    n.fun    = Math.max(0, n.fun    - RATE.fun    * s);
+    // Joy honestly tracks wellbeing now — no more per-interaction ratchet that
+    // pinned everyone at radiant. A well-run actor whose needs stay topped up
+    // drifts toward radiant; a CRITICALLY starved need (< 25) crushes joy, so
+    // neglect has real stakes and mood visibly reflects internal state. The
+    // reward for acting is intrinsic: satisfying a need raises joy by itself.
+    const avg   = (n.hunger + n.energy + n.social + n.fun) / 400;
+    const worst = Math.min(n.hunger, n.energy, n.social, n.fun) / 100;
+    const penalty = worst < 0.25 ? (0.25 - worst) * 2.6 : 0;
+    const target  = Math.max(0, Math.min(1, 0.4 + avg * 0.65 - penalty));
+    actor.joy += (target - actor.joy) * Math.min(1, s * 0.45);
   }
 
-  // Each tick: pick a goal weighted by which need is most pressing. A hungry
-  // actor prefers the feed bowl; a sleepy actor heads to the bed; a lonely
-  // actor goes find a peer. Goals carry which need they satisfy so the goal
-  // resolver can refill that need.
+  // Personality nudges on top of pure need-pressure — small multipliers so an
+  // actor "leans" toward what it loves without ever ignoring an urgent need.
+  _personaBias(id) {
+    switch (id) {
+      case "magma":    return { fun: 1.25, energy: 1.1 };
+      case "pip":      return { social: 1.35, fun: 1.1 };
+      case "whisper":  return { social: 0.55, energy: 1.1 };
+      case "ember":    return { fun: 1.25 };
+      case "mossback": return { energy: 1.2, fun: 0.85 };
+      case "bubble":   return { fun: 1.1, social: 1.1 };
+      default:         return {};
+    }
+  }
+
+  // Which need a given toy/prop relieves. Mirrors the TOY_KIND map in
+  // setInventory (peck = eat = hunger, preen/hop = rest or play).
+  _toyNeed(label) {
+    if (label === "bowl" || label === "ball" || label === "worm" ||
+        label === "dish" || label === "feeder") return "hunger";
+    if (label === "bed" || label === "coop" || label === "perch" ||
+        label === "henhouse") return "energy";
+    return "fun";
+  }
+
+  // Turn a chosen (goal, driving-need) into a short first-person thought + the
+  // emoji that floats over the actor — so the AI's reasoning is legible, not
+  // just its motion. `value` is the current level of the driving need.
+  _composeThought(kind, need, value) {
+    const crit = value < 28;
+    if (kind === "social")
+      return { text: crit ? "lonely — finding a friend" : "feel like some company", glyph: "♡" };
+    if (kind === "sun")    return { text: "basking in the good light", glyph: "☀" };
+    if (kind === "shade")  return { text: "resting out of the sun", glyph: "☾" };
+    if (kind === "wander") return { text: "content — just wandering", glyph: "✦" };
+    if (need === "hunger") return { text: crit ? "starving — to the bowl" : "peckish — grabbing a bite", glyph: "🌾" };
+    if (need === "energy") return { text: crit ? "exhausted — must rest" : "drowsy — off to the coop", glyph: "☾" };
+    return { text: crit ? "restless — need to play" : "in the mood to play", glyph: "♬" };
+  }
+
+  // Each decision: weigh what the actor COULD do by how much it would relieve
+  // its most-pressing need (utility ∝ deficit², softmax-sampled so it's
+  // lifelike, not robotic), commit to the winning goal, and pursue it until
+  // satisfied — then think again. Crucially this picks the BEST option per
+  // need-category, so four hay bales (fun) can't out-vote the one coop (rest)
+  // when the actor is actually exhausted. The reasoning lands on
+  // actor._thought so the hover tip + tests can read the mind, not the motion.
   _pickActorGoal(actor) {
     const now = performance.now();
-    if (actor._goal && now < (actor._goalDeadline || 0)) return;
-    if (actor._goalNextAt && now < actor._goalNextAt) return;
-    actor._goalNextAt = now + rand(4500, 14000);
-
     this._ensureNeeds(actor);
     const def = actor.def;
-    const tname = this.timeName();
-    const prefers = def.prefersTime;
-    const isFlyOrFloat = def.flying || def.floating;
     const n = actor._needs;
-    const candidates = [];
+    const worstVal = Math.min(n.hunger, n.energy, n.social, n.fun);
+    const urgent = worstVal < 28;
 
-    // 1. Toys — choose ones whose interaction satisfies a felt need.
-    //    Bowl/worm/ball → hunger. Bed/coop/perch/henhouse → energy. The
-    //    rest map to fun. Weight is `(100 - need) / 100` — the hungrier
-    //    you are, the more bowls dominate the pool.
-    if (this.toys && this.toys.length > 0) {
-      for (const t of this.toys) {
-        const label = t.label;
-        const satisfies =
-          (label === "bowl" || label === "worm" || label === "ball") ? "hunger" :
-          (label === "bed"  || label === "coop" || label === "perch" || label === "henhouse") ? "energy" :
-          "fun";
-        const weight = ((100 - n[satisfies]) / 100) * (1 + Math.random() * 0.4);
-        if (weight > 0.05) {
-          candidates.push({
-            weight,
-            goal: { pos: t.pos.clone(), kind: "toy:" + label, satisfies,
-                    lingerMs: 1500 + Math.random() * 2000 },
-          });
-        }
-      }
+    // Already pursuing a goal? Stay the course until its deadline — UNLESS a
+    // need just went urgent and the current goal won't relieve it; then drop
+    // everything and re-plan, the way a starving animal abandons play.
+    if (actor._goal && now < (actor._goalDeadline || 0)) {
+      const relievesUrgent = urgent && actor._goal.satisfies &&
+        n[actor._goal.satisfies] <= worstVal + 1;
+      if (!urgent || relievesUrgent) return;
+    } else if (!urgent && now < (actor._goalNextAt || 0)) {
+      // Just finished one — savor it for a beat before deciding again. Skipped
+      // entirely when something is urgent (no dawdling on an empty stomach).
+      return;
     }
 
-    // 2. Social — approach a peer. Ground walkers only (flyers/floaters can't
-    //    meaningfully meet on the ground). Weighted by social-need deficit.
-    if (!isFlyOrFloat && this.actors.length > 1) {
+    const tname = this.timeName();
+    const prefers = def.prefersTime;
+    const isAir = def.flying || def.floating;
+    const m = actor.mesh;
+    const PERS = this._personaBias(def.id);
+
+    // Utility of relieving a need — steep in the deficit so the worst need
+    // dominates, then leaned by personality.
+    const util = (need) => {
+      const d = (100 - n[need]) / 100;       // 0..1 deficit
+      return d * d * (PERS[need] || 1);
+    };
+    const needOf = this._toyNeed;
+
+    // Nearest toy (by ground distance) that serves a given need — so an actor
+    // walks to the closest bowl, not a random one across the valley.
+    const nearestToy = (need) => {
+      let best = null, bestD = Infinity;
+      for (const t of (this.toys || [])) {
+        if (needOf(t.label) !== need) continue;
+        const dx = t.pos.x - m.position.x, dz = t.pos.z - m.position.z;
+        const d = dx * dx + dz * dz;
+        if (d < bestD) { bestD = d; best = t; }
+      }
+      return best;
+    };
+
+    const cand = [];
+    // hunger / energy / fun → the single nearest toy that serves each. One
+    // candidate per need-category keeps the decision count-unbiased.
+    for (const need of ["hunger", "energy", "fun"]) {
+      const t = nearestToy(need);
+      if (!t) continue;
+      cand.push({
+        u: util(need), need,
+        goal: { pos: t.pos.clone(), kind: "toy:" + t.label, satisfies: need,
+                lingerMs: 1500 + Math.random() * 2000 },
+      });
+    }
+    // social → approach a peer (ground walkers only).
+    if (!isAir && this.actors.length > 1) {
       const peers = this.actors.filter((p) => p !== actor && !p.def.flying && !p.def.floating);
       if (peers.length > 0) {
         const peer = peers[Math.floor(Math.random() * peers.length)];
-        const weight = ((100 - n.social) / 100) * (1 + Math.random() * 0.3);
-        candidates.push({
-          weight,
+        cand.push({
+          u: util("social"), need: "social",
           goal: { pos: peer.mesh.position.clone(), kind: "social", peer,
                   satisfies: "social", lingerMs: 1500 + Math.random() * 1500 },
         });
       }
     }
-
-    // 3. Sun / shade — time-of-day preference. Sun in your time = fun; shade
-    //    out of your time = energy (resting in the coop).
+    // sun / shade → a time-of-day mood pull, only a light bonus so it wins
+    // when no real need is pressing (genuine free time).
     if (prefers && prefers !== "any") {
       const inMyTime = (prefers === tname);
       const ang = Math.random() * Math.PI * 2;
@@ -2595,55 +2672,41 @@ export class World {
       const x  = inMyTime ? Math.cos(ang) * r : -2 + Math.random() * 4;
       const z  = inMyTime ? Math.sin(ang) * r : -3 + Math.random() * 2;
       const satisfies = inMyTime ? "fun" : "energy";
-      const weight = ((100 - n[satisfies]) / 100) * (inMyTime ? 0.6 : 0.8);
-      candidates.push({
-        weight,
-        goal: { pos: new THREE.Vector3(x, 0, z),
-                kind: inMyTime ? "sun" : "shade", satisfies,
-                lingerMs: 2000 + Math.random() * 2500 },
+      cand.push({
+        u: 0.12 + util(satisfies) * 0.4, need: satisfies,
+        goal: { pos: new THREE.Vector3(x, 0, z), kind: inMyTime ? "sun" : "shade",
+                satisfies, lingerMs: 2000 + Math.random() * 2500 },
       });
     }
-
-    // 4. Wander — fallback at a small fixed weight so the actor never stalls.
+    // wander → genuine free-time fallback. Tiny constant utility so it loses
+    // to any felt need but keeps the actor alive when everything is met.
     {
       const ang = Math.random() * Math.PI * 2;
       const r = 3 + Math.random() * 8;
-      candidates.push({
-        weight: 0.15,
+      cand.push({
+        u: 0.04, need: "fun",
         goal: { pos: new THREE.Vector3(Math.cos(ang) * r, 0, Math.sin(ang) * r),
-                kind: "wander", satisfies: "fun",
-                lingerMs: 800 + Math.random() * 1200 },
+                kind: "wander", satisfies: "fun", lingerMs: 800 + Math.random() * 1200 },
       });
     }
 
-    // Weighted pick: roulette.
-    let total = 0;
-    for (const c of candidates) total += c.weight;
-    let r = Math.random() * total;
-    let chosen = candidates[candidates.length - 1].goal;
-    for (const c of candidates) {
-      r -= c.weight;
-      if (r <= 0) { chosen = c.goal; break; }
-    }
-    actor._goal = chosen;
-    actor._goalDeadline = now + 20000;
-    // Emote a "thought" — what's on their mind. Strong signal that the AI
-    // is *thinking*, not just moving randomly. emoteActor throttles itself.
-    const thought = ({
-      "toy:bowl":     "🌾",
-      "toy:bale":     "♬",
-      "toy:coop":     "☾",
-      "toy:ball":     "✦",
-      "toy:henhouse": "♡",
-      "toy:disco":    "★",
-      "toy:mirror":   "✿",
-      "toy:worm":     "🌾",
-      "social":       "♡",
-      "sun":          "☀",
-      "shade":        "☾",
-      "wander":       "✦",
-    }[chosen.kind] || "·");
-    if (this.emoteActor) this.emoteActor(actor, thought, 1400);
+    // Softmax over utilities — the most-pressing need almost always wins, with
+    // a little life-like variety. Low temperature keeps it decisive.
+    const T = 0.16;
+    let maxU = -Infinity;
+    for (const c of cand) if (c.u > maxU) maxU = c.u;
+    let sum = 0;
+    for (const c of cand) { c.w = Math.exp((c.u - maxU) / T); sum += c.w; }
+    let r = Math.random() * sum;
+    let chosen = cand[cand.length - 1];
+    for (const c of cand) { r -= c.w; if (r <= 0) { chosen = c; break; } }
+
+    actor._goal = chosen.goal;
+    actor._goalDeadline = now + (urgent ? 18000 : 12000);
+    // Compose the legible thought + the glyph that floats over the actor.
+    const { text, glyph } = this._composeThought(chosen.goal.kind, chosen.need, n[chosen.need]);
+    actor._thought = text;
+    if (this.emoteActor) this.emoteActor(actor, glyph, 1400);
   }
 
   // Steer the actor toward its current goal. Returns a movement speed
@@ -2689,13 +2752,16 @@ export class World {
       this._actorInteractAtGoal(actor, goal);
     } else if (performance.now() - goal.arrivedAt > (goal.lingerMs || 1500)) {
       actor._goal = null;
+      actor._goalNextAt = performance.now() + rand(600, 1600); // brief savor, then re-think
     }
     return base * 0.05; // gentle settling motion
   }
 
   _actorInteractAtGoal(actor, goal) {
     const def = actor.def;
-    // Refill the need this goal satisfies.
+    // Refill the need this goal satisfies — this IS the reward; joy follows
+    // from the topped-up need in _decayNeeds, so we don't bump joy directly
+    // (that's what used to pin every actor at radiant regardless of state).
     if (goal.satisfies && actor._needs) {
       actor._needs[goal.satisfies] = Math.min(100, actor._needs[goal.satisfies] + 45);
     }
@@ -2714,38 +2780,33 @@ export class World {
         if (ground) { this.hopActor(actor, -0.08, 200); safeHop(actor, -0.08, 200, 300); safeHop(actor, -0.08, 200, 700); }
         if (this.emoteActor) this.emoteActor(actor, "🌾", 1200);
         safeEmote(actor, "·", 800);
-        actor.joy = Math.min(1, actor.joy + 0.04);
       } else if (kind === "bale" || kind === "perch") {
         // Hop on, settle, hop down
         this.hopActor(actor, 0.6, 450);
         safeHop(actor, 0.4, 400, 800);
         if (this.emoteActor) this.emoteActor(actor, "♬", 1400);
-        actor.joy = Math.min(1, actor.joy + 0.05);
       } else if (kind === "disco") {
         // Dance: 4 spinning hops + sparkles
         if (ground) { this.hopActor(actor, 0.5, 350); safeHop(actor, 0.5, 350, 400); safeHop(actor, 0.5, 350, 800); safeHop(actor, 0.5, 350, 1200); }
         if (this.emoteActor) this.emoteActor(actor, "♬", 1500);
         safeEmote(actor, "✦", 500); safeEmote(actor, "★", 1000);
-        actor.joy = Math.min(1, actor.joy + 0.08);
       } else if (kind === "bed" || kind === "coop" || kind === "henhouse") {
         // Sleep: emote chain ☾ → z → z
         if (this.emoteActor) this.emoteActor(actor, "☾", 1500);
         safeEmote(actor, "z", 700); safeEmote(actor, "z", 1400);
-        actor.joy = Math.min(1, actor.joy + 0.03);
       } else if (kind === "mirror") {
         // Preen — small bob + sparkles
         if (ground) this.hopActor(actor, -0.05, 250);
         if (this.emoteActor) this.emoteActor(actor, "✿", 1200);
         safeEmote(actor, "✦", 700);
-        actor.joy = Math.min(1, actor.joy + 0.04);
-      } else {
-        actor.joy = Math.min(1, actor.joy + 0.02);
       }
     } else if (goal.kind === "social" && goal.peer) {
-      // Three-beat exchange: hi → reply → mutual sparkle
+      // Three-beat exchange: hi → reply → mutual sparkle. The greeting is
+      // mutual — the peer's social need is met too, so company is reciprocal.
       this.hopActor(actor, 0.3, 350);
       if (this.emoteActor) this.emoteActor(actor, "♡", 1200);
       const peer = goal.peer;
+      if (peer._needs) peer._needs.social = Math.min(100, peer._needs.social + 30);
       setTimeout(() => {
         if (this.actors.includes(peer)) {
           this.hopActor(peer, 0.3, 350);
@@ -2754,13 +2815,10 @@ export class World {
       }, 500);
       safeEmote(actor, "✦", 1100);
       setTimeout(() => this.actors.includes(peer) && this.emoteActor && this.emoteActor(peer, "✦", 1000), 1100);
-      actor.joy = Math.min(1, actor.joy + 0.04);
     } else if (goal.kind === "sun") {
       if (this.emoteActor) this.emoteActor(actor, "☀", 1300);
-      actor.joy = Math.min(1, actor.joy + 0.06);
     } else if (goal.kind === "shade") {
       if (this.emoteActor) this.emoteActor(actor, "☾", 1300);
-      actor.joy = Math.min(1, actor.joy + 0.02);
     }
   }
 
@@ -3073,6 +3131,15 @@ export class World {
     }
   }
   _moodFor(actor) {
+    // A critically starved need speaks first — mood should read the body's
+    // loudest signal, so you can SEE why the actor is doing what it's doing.
+    const n = actor._needs;
+    if (n) {
+      if (n.hunger < 22) return "hungry";
+      if (n.energy < 22) return "exhausted";
+      if (n.social < 22) return "lonely";
+      if (n.fun    < 22) return "restless";
+    }
     const tname = this.timeName();
     const pref = actor.def.prefersTime;
     if (actor.joy > 0.85) return "radiant";
