@@ -79,3 +79,15 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
   door + window. Verified care view; zero errors.
 - **Hay bales** — plain cylinders → rolled bales with twine banding + lighter
   rolled-straw end caps. Verified; Blue's hop-on-bale toys still aligned.
+- **Atmosphere & post-FX pass:**
+  - *Bloom* — vendored version-matched three r160 post-processing addons;
+    EffectComposer (RenderPass → UnrealBloomPass → OutputPass) via
+    `composer.render()`. OutputPass re-applies the existing ACES grade, so
+    bloom only adds a soft glow on bright emissive/additive pixels (strength
+    0.5 / radius 0.5 / threshold 0.9 — sky & snow stay un-washed).
+  - *Golden-hour grade* — dusk retuned to warm amber/honey/peach.
+  - *Animated water* — flat pond disc → tessellated radial-grid surface with
+    shore-tapered cross-wave ripples; shifting normals make the glints dance
+    (and bloom turns them to sparkle).
+  - Verified day/dusk/night render, functional, soak, mobile, and the facing
+    regression — all green, zero errors.

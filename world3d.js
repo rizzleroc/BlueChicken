@@ -1057,18 +1057,52 @@ export class World {
 
     const pondTex = this._makePaintedPondTexture();
     pondTex.wrapS = pondTex.wrapT = THREE.RepeatWrapping;
+    this._pondR = 3.2;
+    const pondGeo = this._buildPondSurface(this._pondR, 9, 40);
     const pond = new THREE.Mesh(
-      new THREE.CircleGeometry(3.2, 36),
+      pondGeo,
       new THREE.MeshStandardMaterial({
-        map: pondTex, roughness: 0.12, metalness: 0.35,
-        transparent: true, opacity: 0.92,
+        map: pondTex, roughness: 0.1, metalness: 0.4,
+        transparent: true, opacity: 0.92, side: THREE.DoubleSide,
       })
     );
-    pond.rotation.x = -Math.PI / 2;
+    // Built flat in XZ with +Y up (no rotation) so tick() can ripple its
+    // vertices and the shifting normals make the surface shimmer.
     pond.position.set(pondCenter.x, 0.04, pondCenter.z);
     pond.receiveShadow = true;
     this.scene.add(pond);
     this.pond = pond;
+    this._pondGeo = pondGeo;
+  }
+
+  // A tessellated radial-grid disc (centre vertex + `rings` concentric rings of
+  // `seg` points). Real interior vertices let tick() ripple the water; UVs map
+  // the disc into the painted pond texture.
+  _buildPondSurface(R, rings, seg) {
+    const pos = [0, 0, 0], uv = [0.5, 0.5], idx = [];
+    for (let k = 1; k <= rings; k++) {
+      const rk = (R * k) / rings;
+      for (let s = 0; s < seg; s++) {
+        const a = (s / seg) * Math.PI * 2;
+        const x = Math.cos(a) * rk, z = Math.sin(a) * rk;
+        pos.push(x, 0, z);
+        uv.push(0.5 + x / (2 * R), 0.5 + z / (2 * R));
+      }
+    }
+    for (let s = 0; s < seg; s++) idx.push(0, 1 + ((s + 1) % seg), 1 + s); // centre fan
+    for (let k = 1; k < rings; k++) {
+      const a0 = 1 + (k - 1) * seg, a1 = 1 + k * seg;
+      for (let s = 0; s < seg; s++) {
+        const s1 = (s + 1) % seg;
+        idx.push(a0 + s, a0 + s1, a1 + s, a0 + s1, a1 + s1, a1 + s);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
   }
 
   // Modern cute ground: a cheerful pastel-green meadow with cream
@@ -2344,12 +2378,29 @@ export class World {
     // Ambient life — drifting motes / fireflies.
     this._updateAmbientLife(dt, now);
 
-    // Pond shimmer — drift the water texture so the surface reads as moving
-    // water rather than a static disc.
+    // Pond shimmer — drift the water texture AND ripple the surface. Gentle
+    // cross-waves (tapered to calm at the shore so they never clip the bank)
+    // shift the vertex normals so the sky/sun glint dances across the water;
+    // the bloom pass turns those moving highlights into soft sparkle.
     if (this.pond && this.pond.material.map) {
       const off = this.pond.material.map.offset;
       off.x = Math.sin(now * 0.00012) * 0.03;
       off.y = now * 0.00003;
+      const g = this._pondGeo;
+      if (g) {
+        const p = g.attributes.position;
+        const t = now * 0.001, R = this._pondR || 3.2;
+        for (let i = 1; i < p.count; i++) {           // i=0 is the calm centre
+          const x = p.getX(i), z = p.getZ(i);
+          const fall = Math.max(0, 1 - Math.hypot(x, z) / R);
+          p.setY(i, fall * (
+            Math.sin(x * 1.7 + t * 1.3) * 0.020 +
+            Math.cos(z * 2.1 - t * 1.6) * 0.016 +
+            Math.sin((x + z) * 1.2 + t * 0.9) * 0.014));
+        }
+        p.needsUpdate = true;
+        g.computeVertexNormals();
+      }
     }
 
     // Actor wander.
