@@ -1859,11 +1859,12 @@ export class World {
     actor.baseScale = mesh.scale.x;
     this._buildMoodPlumbob(actor);
     this._attachContactShadow(actor);
-    // Blue gets an animated face widget parented to her body mesh — works
-    // whether her body is the Tripo GLB or the procedural fallback. The
-    // widget carries the eyes / brows / catchlights that the face animator
-    // (_tickBlueFace) drives every frame.
-    if (charDef.isGateway) this._attachFaceWidget(actor);
+    // NOTE: Blue's Tripo GLB already ships with a full face (goggle eyes,
+    // brows, beak), so we DON'T overlay the procedural face widget — doing so
+    // gave her a visible second set of eyes and a face that floated beside the
+    // body at angles. _attachFaceWidget is kept for any future model that
+    // lacks a face; _tickBlueFace no-ops cleanly when no widget is attached
+    // (it still aims her to look at you via her heading).
     this.actors.push(actor);
     if (this.focus && this.focus.id === actor.id) this._refreshInspector();
     // Respect the current view mode — a prize actor hatching during care view
@@ -2068,8 +2069,7 @@ export class World {
     this.scene.add(m);
     actor.mesh = m;
     actor.baseScale = m.scale.x;
-    // Reattach Blue's face widget — the new GLB body needs it too.
-    if (actor.def.isGateway) this._attachFaceWidget(actor);
+    // No face widget — Blue's GLB has its own face (see _spawnActor note).
   }
 
   // Build + parent Blue's animated face overlay to her body mesh. Works
