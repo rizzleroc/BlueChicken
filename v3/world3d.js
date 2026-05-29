@@ -1404,7 +1404,21 @@ export class World {
     this._dayFactor = day;   // reused by ambient life (pollen ↔ fireflies)
     this.ambient.intensity = 0.16 + day * 0.30;
     this.hemi.intensity    = 0.24 + day * 0.46;
-    if (this.rim) this.rim.intensity = 0.2 + day * 0.45;
+    // Rim/back light is the cast's separation light. Counter-intuitively it
+    // must stay UP at night — that's when the meadow goes dark and silhouettes
+    // would otherwise melt into the ground. Floor it at 0.5 (moonlit edge) and
+    // tint it cooler as the day fades so it reads as moonlight, not leftover
+    // sun. The scene still reads dark because ambient/hemi fall off; only the
+    // character/prop EDGES catch this, which is exactly the cinematic lift.
+    if (this.rim) {
+      const night = 1 - day;
+      this.rim.intensity = 0.5 + day * 0.25;            // night 0.5 → noon 0.75
+      this.rim.color.setRGB(                            // cooler toward moonlight at night
+        0.62 - night * 0.05,
+        0.77 + night * 0.02,
+        1.0,
+      );
+    }
 
     // Visible sun + moon sprites — same arc, larger radius so they sit far in
     // the sky. The moon trails 180° behind the sun so we always have one or
