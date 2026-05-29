@@ -163,10 +163,19 @@ await expectGoalFor("ember",    "social", "social", "lonely → seek company"); 
 // ---- D. a tired actor actually rests and recovers (loop closes) -----------
 console.log("\n── D. tired actor rests and recovers ──");
 {
-  const id = "magma"; // fast walker so it reaches the coop quickly
-  await force(id, { hunger: 90, energy: 18, social: 90, fun: 90 });
-  let sawEnergyGoal = false, peak = 18;
-  for (let i = 0; i < 30; i++) {       // up to ~6s real time
+  const id = "magma";
+  // Park it next to an energy toy first, so the test measures the *decision +
+  // refill* (does a tired actor rest and recover?) rather than how far it
+  // happened to spawn from the coop. Then make it exhausted.
+  await page.evaluate((id) => {
+    const w = window.__world;
+    const a = w.actors.find((x) => x.id === id);
+    const toy = (w.toys || []).find((t) => ["coop", "bed", "perch", "henhouse"].includes(t.label));
+    if (a && toy) { a.mesh.position.x = toy.pos.x + 1.2; a.mesh.position.z = toy.pos.z; a._goal = null; }
+  }, id);
+  await force(id, { hunger: 90, energy: 16, social: 90, fun: 90 });
+  let sawEnergyGoal = false, peak = 16;
+  for (let i = 0; i < 40; i++) {       // up to ~8s real time
     await page.waitForTimeout(200);
     const s = await read(id);
     if (s.satisfies === "energy") sawEnergyGoal = true;

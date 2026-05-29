@@ -69,6 +69,7 @@ export class World {
     this._buildFenceRing();    // friendly white picket fence around the pen
     this._scatterScenery();
     this._buildStars();
+    this._buildAmbientLife();  // drifting pollen by day, fireflies by night
     this._buildBarn();        // cozy farm dressing visible in CARE view
 
     this.actors = [];
@@ -972,18 +973,34 @@ export class World {
     this.ground.receiveShadow = true;
     this.scene.add(this.ground);
 
-    // Pond — same kind of painted texture, blue palette, slightly glossy.
+    // Pond. A damp earth bank rings the water so it sits IN the ground rather
+    // than reading as a flat blue sticker laid on top. The water itself is
+    // glossier (low roughness, higher metalness) so it picks up the sky and
+    // shimmers — animated via a slow texture offset in tick().
+    const pondCenter = new THREE.Vector3(8, 0.0, -6);
+    const bank = new THREE.Mesh(
+      new THREE.CircleGeometry(3.7, 36),
+      new THREE.MeshStandardMaterial({ color: 0x6f6048, roughness: 1.0 })
+    );
+    bank.rotation.x = -Math.PI / 2;
+    bank.position.set(pondCenter.x, 0.015, pondCenter.z);
+    bank.receiveShadow = true;
+    this.scene.add(bank);
+
     const pondTex = this._makePaintedPondTexture();
+    pondTex.wrapS = pondTex.wrapT = THREE.RepeatWrapping;
     const pond = new THREE.Mesh(
-      new THREE.CircleGeometry(3.2, 32),
+      new THREE.CircleGeometry(3.2, 36),
       new THREE.MeshStandardMaterial({
-        map: pondTex, roughness: 0.25, metalness: 0.15,
+        map: pondTex, roughness: 0.12, metalness: 0.35,
+        transparent: true, opacity: 0.92,
       })
     );
     pond.rotation.x = -Math.PI / 2;
-    pond.position.set(8, 0.02, -6);
+    pond.position.set(pondCenter.x, 0.04, pondCenter.z);
     pond.receiveShadow = true;
     this.scene.add(pond);
+    this.pond = pond;
   }
 
   // Modern cute ground: a cheerful pastel-green meadow with cream
@@ -1190,6 +1207,80 @@ export class World {
     this.scene.add(this.stars);
   }
 
+  // Ambient life — a drifting cloud of soft motes that catch the daylight as
+  // pale pollen, then warm into twinkling fireflies after dusk. Costs one
+  // Points draw call; it's the cue that turns a diorama into a place. Day vs
+  // night is a per-frame blend off this._dayFactor (set in _applyTimeBlend),
+  // baked into per-vertex colour so individual fireflies can twinkle.
+  _buildAmbientLife() {
+    const N = 90;
+    const pos = new Float32Array(N * 3);
+    const col = new Float32Array(N * 3);
+    this._motes = [];
+    for (let i = 0; i < N; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const rad = 2 + Math.random() * 20;
+      const bx = Math.cos(ang) * rad;
+      const bz = Math.sin(ang) * rad;
+      const by = 0.4 + Math.random() * 5.0;
+      pos[i * 3] = bx; pos[i * 3 + 1] = by; pos[i * 3 + 2] = bz;
+      this._motes.push({
+        bx, by, bz,
+        ph: Math.random() * Math.PI * 2,      // drift phase
+        sp: 0.2 + Math.random() * 0.5,        // drift speed
+        amp: 0.4 + Math.random() * 0.9,       // drift radius
+        tw: Math.random() * Math.PI * 2,      // twinkle phase
+        ts: 0.0012 + Math.random() * 0.0026,  // twinkle speed
+        rise: 0.1 + Math.random() * 0.3,      // slow vertical drift
+      });
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    this.moteMat = new THREE.PointsMaterial({
+      map: this._makeDiscTexture(64, ["#ffffff", "rgba(255,255,255,0.6)", "rgba(255,255,255,0)"]),
+      size: 0.5, sizeAttenuation: true, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, vertexColors: true, opacity: 1,
+    });
+    this.motes = new THREE.Points(geom, this.moteMat);
+    this.motes.frustumCulled = false;
+    this.motes.renderOrder = 2;
+    this.scene.add(this.motes);
+  }
+
+  _updateAmbientLife(dt, now) {
+    if (!this.motes) return;
+    const day = this._dayFactor ?? 1;
+    const night = 1 - day;
+    const posAttr = this.motes.geometry.attributes.position;
+    const colAttr = this.motes.geometry.attributes.color;
+    // Pollen is a warm near-white; fireflies a warm yellow-green.
+    const dr = 1.0, dg = 0.95, db = 0.78;   // daytime pollen tint
+    const fr = 0.75, fg = 1.0, fb = 0.45;   // firefly tint
+    for (let i = 0; i < this._motes.length; i++) {
+      const m = this._motes[i];
+      const t = now * 0.001;
+      const x = m.bx + Math.sin(t * m.sp + m.ph) * m.amp;
+      const z = m.bz + Math.cos(t * m.sp * 0.8 + m.ph) * m.amp;
+      // Slow rise that wraps so the cloud keeps gently lifting.
+      let y = m.by + ((t * m.rise) % 5);
+      if (y > 6) y -= 6;
+      posAttr.setXYZ(i, x, y, z);
+      // Brightness: a soft steady glow by day, an individual twinkle by night.
+      const dayB = day * 0.09;   // faint sun-dust by day, not snow
+      const nightB = night * (0.45 + 0.55 * Math.sin(now * m.ts + m.tw)) * (0.5 + 0.5 * Math.sin(m.tw * 3));
+      const b = Math.max(0, dayB + nightB);
+      const r = (dr * day + fr * night) * b;
+      const g = (dg * day + fg * night) * b;
+      const bl = (db * day + fb * night) * b;
+      colAttr.setXYZ(i, r, g, bl);
+    }
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+    // Fireflies sit noticeably bigger than the faint daytime dust.
+    this.moteMat.size = 0.26 + night * 0.42;
+  }
+
   // ---- time / weather -----------------------------------------------------
 
   timeName() { return TIMES[this.timeIdx]; }
@@ -1310,6 +1401,7 @@ export class World {
     // actually reads as night: dim, cool, moonlit — not a bright-green meadow
     // with the lamps left on. This is what makes dusk → night feel cinematic.
     const day = Math.max(0, Math.sin(ang));
+    this._dayFactor = day;   // reused by ambient life (pollen ↔ fireflies)
     this.ambient.intensity = 0.16 + day * 0.30;
     this.hemi.intensity    = 0.24 + day * 0.46;
     if (this.rim) this.rim.intensity = 0.2 + day * 0.45;
@@ -2010,8 +2102,12 @@ export class World {
     m.add(widget);
 
     const socketMat = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.3, metalness: 0.6 });
-    const glowMat   = new THREE.MeshBasicMaterial({ color: 0xb8e4ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false });
-    const hiMat     = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+    // depthTest stays ON so Blue's own head occludes her eyes when she turns
+    // away — otherwise the additive glow punched straight through to the back
+    // of her head. The glow + catchlight sit forward of the socket's front
+    // pole (x≈0.14) so the socket never hides them when she faces you.
+    const glowMat   = new THREE.MeshBasicMaterial({ color: 0xb8e4ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    const hiMat     = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const browMat   = new THREE.MeshStandardMaterial({ color: 0x0a0a18, roughness: 0.5, metalness: 0.2 });
 
     const eyes = [];
@@ -2021,11 +2117,11 @@ export class World {
       socket.renderOrder = 5;
       widget.add(socket);
       const glow = new THREE.Mesh(new THREE.SphereGeometry(0.085, 14, 10), glowMat.clone());
-      glow.position.set(0.05, 0, z);
+      glow.position.set(0.13, 0, z);
       glow.renderOrder = 6;
       widget.add(glow);
       const hi = new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 6), hiMat.clone());
-      hi.position.set(0.10, 0.04, z + (z > 0 ? -0.025 : 0.025));
+      hi.position.set(0.20, 0.04, z + (z > 0 ? -0.025 : 0.025));
       hi.renderOrder = 7;
       widget.add(hi);
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.035, 0.05), browMat.clone());
@@ -2161,6 +2257,17 @@ export class World {
       if (e.halo && e.halo.material) {
         e.halo.material.opacity = 0.45 + Math.sin(now * 0.0014 + e.bobPhase) * 0.18;
       }
+    }
+
+    // Ambient life — drifting motes / fireflies.
+    this._updateAmbientLife(dt, now);
+
+    // Pond shimmer — drift the water texture so the surface reads as moving
+    // water rather than a static disc.
+    if (this.pond && this.pond.material.map) {
+      const off = this.pond.material.map.offset;
+      off.x = Math.sin(now * 0.00012) * 0.03;
+      off.y = now * 0.00003;
     }
 
     // Actor wander.
@@ -2447,6 +2554,25 @@ export class World {
     const ud = m.userData || {};
     const now = performance.now();
     const mode = actor._blue && actor._blue.mode;
+
+    // ---- HIDE THE FACE WHEN SHE TURNS AWAY -------------------------------
+    // The face is a flat widget overlaid on the front of the GLB body; the
+    // body is too small to occlude the eyes from behind, so when Blue turns
+    // her back the eyes used to show through the back of her head. The face
+    // offset direction (widget world pos − body world pos) IS her facing
+    // vector — if it points away from the camera, hide the whole widget.
+    if (ud.faceWidget) {
+      const wp = ud.faceWidget.getWorldPosition(this._v0 ||= new THREE.Vector3());
+      const bp = m.getWorldPosition(this._v1 ||= new THREE.Vector3());
+      // Geometric, axis-agnostic test: the face is hidden when the eyes sit
+      // FARTHER from the camera than the body's centre — i.e. the body is
+      // between you and the eyes (she's turned away). Compared in the XZ plane
+      // so her vertical bob doesn't flip it.
+      const cam = this.camera.position;
+      const dEye  = (wp.x - cam.x) ** 2 + (wp.z - cam.z) ** 2;
+      const dBody = (bp.x - cam.x) ** 2 + (bp.z - cam.z) ** 2;
+      ud.faceWidget.visible = dEye <= dBody + 0.4; // small bias keeps profiles visible
+    }
 
     // ---- LOOK AT YOU ------------------------------------------------------
     // When visiting (idle at the visit spot), continuously aim her facing
