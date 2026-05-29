@@ -49,6 +49,42 @@ ol,ul{ list-style: none; }
   100% { transform: translate(2%, -2%); }
 }
 
+/* Cinematic grade over the 3D render: a vignette that darkens the corners so
+   the eye settles on Blue + the pen, plus a faint cool top / warm bottom wash
+   that gives the flat meadow some depth. Above the canvas, below the grain. */
+#cinematic{
+  position:fixed; inset:0;
+  z-index:1;
+  pointer-events:none;
+  background:
+    radial-gradient(125% 115% at 50% 38%,
+      rgba(0,0,0,0) 52%, rgba(20,12,34,.16) 78%, rgba(12,8,22,.42) 100%),
+    linear-gradient(180deg,
+      rgba(150,200,255,.06) 0%, rgba(0,0,0,0) 32%,
+      rgba(0,0,0,0) 72%, rgba(60,30,20,.10) 100%);
+  mix-blend-mode:soft-light;
+}
+/* Add a second, multiply vignette pass so the corner falloff reads on bright
+   pastel skies where soft-light alone washes out. */
+#cinematic::after{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(130% 120% at 50% 42%,
+    rgba(0,0,0,0) 60%, rgba(8,6,16,.30) 100%);
+}
+
+/* Boot fade — starts as opaque near-black and lifts to clear once the page
+   loads, so the realm dawns in rather than snapping on with half-loaded
+   textures. main3d.js removes the .lifting class is unnecessary; pure CSS. */
+#bootfade{
+  position:fixed; inset:0;
+  z-index:3;
+  pointer-events:none;
+  background:#0a0710;
+  opacity:1;
+  animation:bootDawn 1100ms ease-out 120ms forwards;
+}
+@keyframes bootDawn{ to { opacity:0; } }
+
 /* ============ MODALS ============ */
 .modal{
   position:fixed; inset:0;

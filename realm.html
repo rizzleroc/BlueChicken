@@ -30,6 +30,12 @@
   <!-- The 3D scene sits behind the HUD chrome. Same canvas id main3d.js binds to. -->
   <canvas id="webgl" aria-hidden="true"></canvas>
 
+  <!-- Cinematic finish: a soft vignette + gentle color grade painted over the
+       render, plus a one-shot boot fade so the world dawns in instead of
+       popping. Purely presentational; above the canvas, below all HUD chrome. -->
+  <div id="cinematic" aria-hidden="true"></div>
+  <div id="bootfade" aria-hidden="true"></div>
+
   <!-- =================== WELCOME / NAMING (V1 style) =================== -->
   <div id="welcome" class="modal" aria-modal="false">
     <div class="modal-card">

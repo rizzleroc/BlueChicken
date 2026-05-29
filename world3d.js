@@ -116,17 +116,26 @@ export class World {
   // ---- scene scaffolding --------------------------------------------------
 
   _buildLights() {
-    this.ambient = new THREE.AmbientLight(this.ambientColors.day.getHex(), 0.65);
+    // Lower flat ambient + a stronger sky/ground hemisphere bounce gives the
+    // scene contrast and a sense of a real sky overhead instead of a uniform
+    // wash — the single biggest lift from "prototype lighting" to "lit scene".
+    this.ambient = new THREE.AmbientLight(this.ambientColors.day.getHex(), 0.42);
     this.scene.add(this.ambient);
 
-    // hemisphere gives a soft sky/ground bounce
-    this.hemi = new THREE.HemisphereLight(0xa9d4ff, 0x49603f, 0.4);
+    // Hemisphere: warm pastel sky tint above, mossy bounce below.
+    this.hemi = new THREE.HemisphereLight(0xbfe0ff, 0x5a6b3a, 0.62);
     this.scene.add(this.hemi);
 
-    this.sun = new THREE.DirectionalLight(this.sunColors.day.getHex(), 1.4);
+    // Key sun — warmer and stronger, with soft (blurred) shadows so characters
+    // and props sit in the world rather than floating on it.
+    this.sun = new THREE.DirectionalLight(this.sunColors.day.getHex(), 1.75);
     this.sun.position.set(20, 30, 10);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.radius = 6;
+    this.sun.shadow.blurSamples = 18;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.02;
     const s = 40;
     this.sun.shadow.camera.left = -s;
     this.sun.shadow.camera.right = s;
@@ -135,6 +144,13 @@ export class World {
     this.sun.shadow.camera.near = 0.5;
     this.sun.shadow.camera.far = 100;
     this.scene.add(this.sun);
+
+    // Cool rim/back light from the opposite side — no shadows, just a soft
+    // edge of separation so silhouettes lift off the hills. Tinted toward the
+    // sky so it reads as bounced skylight.
+    this.rim = new THREE.DirectionalLight(0x9fc4ff, 0.55);
+    this.rim.position.set(-18, 14, -16);
+    this.scene.add(this.rim);
   }
 
   // Inverted sphere with a per-vertex gradient. We store the vertical "height
@@ -824,9 +840,11 @@ export class World {
   _buildFenceRing() {
     const RADIUS = 25;
     const COUNT = 56;
-    const plankGeom = new THREE.BoxGeometry(0.16, 1.0, 0.06);
+    const plankGeom = new THREE.BoxGeometry(0.16, 0.84, 0.06);
+    // Warm painted-wood off-white — light enough to read as a picket fence,
+    // dark enough not to blow out to flat white under the brighter sun.
     const plankMat = new THREE.MeshStandardMaterial({
-      color: 0xfaf3e0, roughness: 0.7, metalness: 0.02, flatShading: true,
+      color: 0xe7d8b8, roughness: 0.82, metalness: 0.0, flatShading: true,
     });
     const pointGeom = new THREE.ConeGeometry(0.12, 0.22, 4);
     const railGeom = new THREE.BoxGeometry(2.9, 0.08, 0.05);
@@ -1005,20 +1023,28 @@ export class World {
       ctx.moveTo(bx, by); ctx.lineTo(bx + 1, by - h);
       ctx.stroke();
     }
-    // Candy wildflower clusters — pastel petal rosettes in pink/yellow/blue.
-    ctx.globalAlpha = 0.95;
-    const flowers = ["#ffb6d6", "#ffe26a", "#a3c8ff", "#ffac6b", "#ffffff", "#ff8aae", "#c4a8ff"];
-    for (let i = 0; i < 380; i++) {
-      ctx.fillStyle = flowers[Math.floor(Math.random() * flowers.length)];
-      const cx = Math.random() * size, cy = Math.random() * size;
-      const r = 1.6 + Math.random() * 2.0;
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-      const petals = 4;
-      for (let p = 0; p < petals; p++) {
-        const a = (p / petals) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * r * 1.5, cy + Math.sin(a) * r * 1.5, r * 0.6, 0, Math.PI * 2);
-        ctx.fill();
+    // Soft wildflowers — sparse, gentle pastels so the meadow reads as a
+    // painted field rather than scattered confetti. Fewer, fainter, in small
+    // clustered patches so there are quiet stretches of plain grass too.
+    const flowers = ["#f3a9c8", "#f6dd86", "#aecbf0", "#f1b890", "#c9b6ea"];
+    const clusters = 18;
+    for (let cI = 0; cI < clusters; cI++) {
+      const ccx = Math.random() * size, ccy = Math.random() * size;
+      const color = flowers[Math.floor(Math.random() * flowers.length)];
+      const n = 4 + Math.floor(Math.random() * 5);
+      for (let i = 0; i < n; i++) {
+        ctx.globalAlpha = 0.4 + Math.random() * 0.25;
+        ctx.fillStyle = color;
+        const cx = ccx + (Math.random() - 0.5) * 70;
+        const cy = ccy + (Math.random() - 0.5) * 70;
+        const r = 1.4 + Math.random() * 1.6;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+        for (let p = 0; p < 4; p++) {
+          const a = (p / 4) * Math.PI * 2 + 0.6;
+          ctx.beginPath();
+          ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.55, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -1089,57 +1115,53 @@ export class World {
     this._treeMeshes = [];
     this._rockMeshes = [];
 
-    const haveTree = !!this.treeTexture;
-    const haveRock = !!this.rockTexture;
-
+    // Always-3D scenery. The old painted billboards (docs/scenery/*.png) ship
+    // with no alpha channel, so they rendered as opaque white panels ringing
+    // the meadow — the single most "prototype" thing in the scene. Real
+    // low-poly meshes read consistently with the GLB cast, catch the light,
+    // and cast shadows. Per-tree colour variation keeps the grove from looking
+    // stamped. Variation seeds live on the placement so re-renders are stable.
+    const greenA = new THREE.Color(0x3f7a32);
+    const greenB = new THREE.Color(0x6fb24a);
     for (const p of this._treePlacements) {
-      if (haveTree) {
-        // Painted-tree billboard sprite. Centered at feet (bottom) and scaled
-        // so a typical tree reads about 4 world units tall.
-        const mat = new THREE.SpriteMaterial({
-          map: this.treeTexture, transparent: true, depthWrite: false, alphaTest: 0.05,
-        });
-        const tree = new THREE.Sprite(mat);
-        tree.center.set(0.5, 0);
-        tree.scale.setScalar(p.scale * 4.0);
-        tree.position.set(p.x, 0, p.z);
-        this.scene.add(tree);
-        this._treeMeshes.push(tree);
-      } else {
-        // Procedural fallback: cylinder trunk + 3 stacked cones, used briefly
-        // before the painted texture finishes loading.
-        const tree = new THREE.Group();
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.0, 6), std(0x4a2f1a));
-        trunk.position.y = 0.5; trunk.castShadow = true; tree.add(trunk);
-        for (let s = 0; s < 3; s++) {
-          const cone = new THREE.Mesh(new THREE.ConeGeometry(0.95 - s * 0.18, 1.2 - s * 0.18, 8), std(0x355d2a));
-          cone.position.y = 1.1 + s * 0.55; cone.castShadow = true; tree.add(cone);
-        }
-        tree.position.set(p.x, 0, p.z);
-        tree.rotation.y = p.rot;
-        tree.scale.setScalar(p.scale);
-        this.scene.add(tree);
-        this._treeMeshes.push(tree);
+      p._g = p._g ?? Math.random();          // foliage hue seed (stable)
+      const foliage = greenA.clone().lerp(greenB, p._g);
+      const tree = new THREE.Group();
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.24, 1.05, 7),
+        std(0x6b4426));
+      trunk.position.y = 0.52; trunk.castShadow = true; trunk.receiveShadow = true;
+      tree.add(trunk);
+      // Four stacked cones — fuller, rounder canopy than the old 3-cone stub.
+      const tiers = 4;
+      for (let s = 0; s < tiers; s++) {
+        const shade = foliage.clone().multiplyScalar(1 - s * 0.06);
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(1.0 - s * 0.16, 1.15 - s * 0.12, 9),
+          new THREE.MeshStandardMaterial({ color: shade, roughness: 0.85, flatShading: true }));
+        cone.position.y = 1.0 + s * 0.5;
+        cone.castShadow = true;
+        tree.add(cone);
       }
+      tree.position.set(p.x, 0, p.z);
+      tree.rotation.y = p.rot;
+      tree.scale.setScalar(p.scale);
+      this.scene.add(tree);
+      this._treeMeshes.push(tree);
     }
     for (const p of this._rockPlacements) {
-      if (haveRock) {
-        const mat = new THREE.SpriteMaterial({
-          map: this.rockTexture, transparent: true, depthWrite: false, alphaTest: 0.05,
-        });
-        const rock = new THREE.Sprite(mat);
-        rock.center.set(0.5, 0);
-        rock.scale.setScalar(p.scale * 1.6);
-        rock.position.set(p.x, 0, p.z);
-        this.scene.add(rock);
-        this._rockMeshes.push(rock);
-      } else {
-        const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(p.scale, 0), std(0x7a8088));
-        rock.position.set(p.x, 0.2, p.z);
-        rock.castShadow = true; rock.receiveShadow = true;
-        this.scene.add(rock);
-        this._rockMeshes.push(rock);
-      }
+      p._h = p._h ?? Math.random();
+      // Warm grey → mossy stone tint, slightly squashed so it sits in the grass.
+      const col = new THREE.Color(0x8a8b82).lerp(new THREE.Color(0x6c726a), p._h);
+      const rock = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(p.scale, 0),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.95, flatShading: true }));
+      rock.scale.y = 0.7;
+      rock.rotation.set(rand(0, 0.4), rand(0, Math.PI * 2), rand(0, 0.4));
+      rock.position.set(p.x, p.scale * 0.45, p.z);
+      rock.castShadow = true; rock.receiveShadow = true;
+      this.scene.add(rock);
+      this._rockMeshes.push(rock);
     }
   }
 
@@ -1283,7 +1305,14 @@ export class World {
     const fullT = (this.timeIdx + t) / TIMES.length; // 0..1 over full cycle
     const ang = fullT * Math.PI * 2;
     this.sun.position.set(Math.cos(ang) * 30, Math.max(2, Math.sin(ang) * 30), Math.sin(ang) * 10);
-    this.sun.intensity = Math.max(0.05, Math.sin(ang) * 1.6);
+    this.sun.intensity = Math.max(0.05, Math.sin(ang) * 1.95);
+    // Daylight factor (0 at night → 1 at noon) drives the fill lights so night
+    // actually reads as night: dim, cool, moonlit — not a bright-green meadow
+    // with the lamps left on. This is what makes dusk → night feel cinematic.
+    const day = Math.max(0, Math.sin(ang));
+    this.ambient.intensity = 0.16 + day * 0.30;
+    this.hemi.intensity    = 0.24 + day * 0.46;
+    if (this.rim) this.rim.intensity = 0.2 + day * 0.45;
 
     // Visible sun + moon sprites — same arc, larger radius so they sit far in
     // the sky. The moon trails 180° behind the sun so we always have one or
@@ -1737,6 +1766,7 @@ export class World {
     // spriteScale; sprite-actors keep their own internal sprite.scale).
     actor.baseScale = mesh.scale.x;
     this._buildMoodPlumbob(actor);
+    this._attachContactShadow(actor);
     // Blue gets an animated face widget parented to her body mesh — works
     // whether her body is the Tripo GLB or the procedural fallback. The
     // widget carries the eyes / brows / catchlights that the face animator
@@ -1752,18 +1782,59 @@ export class World {
     return actor;
   }
 
+  // Soft contact shadow — a radial dark decal that lies flat on the ground
+  // under each actor. The real sun shadow can be faint at this scale/angle, so
+  // this guarantees every hatchling is *grounded* (not floating). It lives in
+  // world space (not parented to the bobbing mesh) and is repositioned each
+  // frame; for flyers/floaters it grows and fades with altitude like a real
+  // cast shadow. This is the single biggest "it's a real scene" cue.
+  _attachContactShadow(actor) {
+    const tex = this._contactShadowTex ||= this._makeDiscTexture(
+      128, ["rgba(0,0,0,0.50)", "rgba(0,0,0,0.28)", "rgba(0,0,0,0)"]);
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: tex, transparent: true, depthWrite: false, opacity: 0.9,
+      })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.renderOrder = -0.5;            // under actors, over the ground texture
+    mesh.raycast = () => {};            // never intercept clicks meant for actors
+    const footprint = (actor.def.spriteScale || 2) * 2.4 * (actor.baseScale || 1) / 2;
+    mesh.scale.setScalar(Math.max(1.4, footprint));
+    this.scene.add(mesh);
+    actor._contactShadow = mesh;
+    actor._shadowFootprint = mesh.scale.x;
+  }
+
+  // Keep the contact shadow planted under the actor. Flyers cast a larger,
+  // softer pool the higher they are; grounded walkers keep a tight dark pool.
+  _updateContactShadow(actor) {
+    const sh = actor._contactShadow;
+    if (!sh) return;
+    const m = actor.mesh;
+    const groundY = 0.6; // the at-rest feet height for walkers
+    const alt = Math.max(0, m.position.y - groundY);
+    const spread = 1 + Math.min(1.4, alt * 0.18);
+    const fade = 1 / (1 + alt * 0.25);
+    sh.position.set(m.position.x, 0.045, m.position.z);
+    sh.scale.setScalar(actor._shadowFootprint * spread);
+    sh.material.opacity = 0.9 * fade;
+    sh.visible = m.visible;
+  }
+
   // Sims-style mood plumbob — a small floating diamond above the actor whose
   // color reflects their mood. Attached to the actor's mesh so it follows
   // every position change for free. Per-tick we update the color + bob.
   _buildMoodPlumbob(actor) {
     const group = new THREE.Group();
     group.name = "plumbob";
-    const geom = new THREE.OctahedronGeometry(0.36, 0);
+    const geom = new THREE.OctahedronGeometry(0.26, 0);
     geom.scale(1.0, 1.7, 1.0);
     const mat = new THREE.MeshBasicMaterial({
       color: 0xa0ff5a,
       transparent: true,
-      opacity: 0.98,
+      opacity: 0.82,
       depthWrite: false,
       depthTest: false,           // Sims plumbobs always pop through
     });
@@ -1771,14 +1842,15 @@ export class World {
     diamond.name = "plumbobDiamond";
     diamond.renderOrder = 999;
     group.add(diamond);
-    // Soft halo behind the diamond for the Sims glow.
+    // Soft halo behind the diamond for the Sims glow — restrained so it reads
+    // as a gentle aura, not a neon beacon.
     const haloMat = new THREE.SpriteMaterial({
-      map: this._makeDiscTexture(128, ["#a0ff5a", "#a0ff5a", "rgba(160,255,90,0)"]),
+      map: this._makeDiscTexture(128, ["rgba(160,255,90,0.6)", "rgba(160,255,90,0.25)", "rgba(160,255,90,0)"]),
       transparent: true, depthWrite: false, depthTest: false,
       blending: THREE.AdditiveBlending,
     });
     const halo = new THREE.Sprite(haloMat);
-    halo.scale.setScalar(1.6);
+    halo.scale.setScalar(1.05);
     halo.name = "plumbobHalo";
     halo.renderOrder = 998;
     group.add(halo);
@@ -2146,6 +2218,9 @@ export class World {
   _tickActor(actor, dt) {
     const def = actor.def;
     const m = actor.mesh;
+    // Keep every actor grounded — runs before Blue's early return so she gets
+    // a contact shadow too.
+    this._updateContactShadow(actor);
     // Blue gets her own behavior state machine: visits the camera in CARE
     // view, plays with the coop toys (peck the bowl, hop on bales) when
     // left alone (VALLEY view, or after enough idle seconds in CARE).
