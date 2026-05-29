@@ -363,28 +363,54 @@ export class World {
 
     // --- The coop: a small barn behind Blue (negative Z) ---
     const coop = new THREE.Group();
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0xc89b6a, roughness: 0.8 });
+
+    // Walls.
     const body = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.2, 3.6), plankMat);
     body.position.y = 1.6;
     body.castShadow = true; body.receiveShadow = true;
     coop.add(body);
-    // Pitched roof (two slanted boxes meeting at a ridge).
-    const roofL = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 3.9), roofMat);
-    roofL.position.set(-1.0, 3.6, 0);
-    roofL.rotation.z = Math.PI * 0.18;
-    coop.add(roofL);
-    const roofR = roofL.clone();
-    roofR.position.x = 1.0;
-    roofR.rotation.z = -Math.PI * 0.18;
-    coop.add(roofR);
-    // Door (dark plank rectangle on the front face).
-    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.08), darkPlank);
-    door.position.set(0, 0.9, 1.82);
+
+    // Gable roof — ONE extruded triangular prism: solid sloped faces AND solid
+    // gable ends, overhanging the walls (eaves), so it reads as a real roof
+    // instead of two floating planks with open triangular gaps.
+    const peakH = 2.0, halfW = 3.05, depth = 4.1;
+    const roofShape = new THREE.Shape();
+    roofShape.moveTo(-halfW, 0); roofShape.lineTo(halfW, 0); roofShape.lineTo(0, peakH); roofShape.closePath();
+    const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth, bevelEnabled: false });
+    roofGeo.translate(0, 0, -depth / 2);
+    const roof = new THREE.Mesh(roofGeo, roofMat);
+    roof.position.y = 3.2;
+    roof.castShadow = true; roof.receiveShadow = true;
+    coop.add(roof);
+    // Ridge cap along the peak.
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, depth + 0.1), darkPlank);
+    ridge.position.set(0, 3.2 + peakH, 0);
+    coop.add(ridge);
+
+    // Vertical corner posts wrapping each corner (proud of both wall faces).
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.26, 3.22, 0.26), trimMat);
+      post.position.set(sx * 2.75, 1.6, sz * 1.8);
+      post.castShadow = true;
+      coop.add(post);
+    }
+
+    // Front face (z = +1.8): framed door + round window with trim.
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.05, 0.06), trimMat);
+    frame.position.set(0, 1.0, 1.81);
+    coop.add(frame);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.1), darkPlank);
+    door.position.set(0, 0.9, 1.85);
     coop.add(door);
+    const winFrame = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.92, 0.06), trimMat);
+    winFrame.position.set(0, 2.4, 1.81);
+    coop.add(winFrame);
     // Round window above the door — bright yellow disc (interior lamp glow).
     const windowGeom = new THREE.CircleGeometry(0.36, 24);
     const windowMat = new THREE.MeshBasicMaterial({ color: 0xffd57f, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
     const win = new THREE.Mesh(windowGeom, windowMat);
-    win.position.set(0, 2.4, 1.83);
+    win.position.set(0, 2.4, 1.85);
     coop.add(win);
     // Soft point light inside the window, glow at the door.
     const lamp = new THREE.PointLight(0xffd29a, 0.9, 10, 1.6);
@@ -395,13 +421,33 @@ export class World {
     barn.add(coop);
 
     // --- Hay bales, scattered to either side of Blue ---
+    const twineMat = new THREE.MeshStandardMaterial({ color: 0xa9762a, roughness: 1 });
+    const baleEndMat = new THREE.MeshStandardMaterial({ color: 0xc6912f, roughness: 1 });
+    const R = 0.6, L = 1.1;
     const bale = (x, z, rot) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.1, 16), hayMat);
-      m.rotation.z = Math.PI / 2;
-      m.rotation.y = rot;
-      m.position.set(x, 0.6, z);
-      m.castShadow = true; m.receiveShadow = true;
-      return m;
+      const g = new THREE.Group();
+      // The roll lies on its side (axis along local X).
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(R, R, L, 18), hayMat);
+      roll.rotation.z = Math.PI / 2;
+      g.add(roll);
+      // Twine bands wrapping the roll at three points along its length.
+      for (const ox of [-0.34, 0, 0.34]) {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.015, R + 0.015, 0.07, 18), twineMat);
+        band.rotation.z = Math.PI / 2;
+        band.position.x = ox;
+        g.add(band);
+      }
+      // Rolled-straw end caps — a lighter disc proud of each flat end.
+      for (const s of [-1, 1]) {
+        const cap = new THREE.Mesh(new THREE.CircleGeometry(R - 0.03, 18), baleEndMat);
+        cap.rotation.y = s * Math.PI / 2;
+        cap.position.x = s * (L / 2 + 0.002);
+        g.add(cap);
+      }
+      g.rotation.y = rot;
+      g.position.set(x, R, z);
+      g.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
+      return g;
     };
     barn.add(bale(-3.4, -2.6, 0.2));
     barn.add(bale(-4.2, -1.4, -0.4));
