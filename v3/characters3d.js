@@ -398,6 +398,8 @@ const aurora = {
   portrait: "docs/portraits/aurora.png",
   model: "docs/models/aurora.glb",
   modelTargetHeight: 3.0,
+  // GLB authored facing -X; +π/2 aligns the face to the +Z heading convention.
+  modelYaw: Math.PI / 2,
   spriteScale: 3.5,
   name: "Aurora",
   role: "Sky-Whale of the Quiet Vault",
@@ -469,6 +471,7 @@ const magma = {
   portrait: "docs/portraits/magma.png",
   model: "docs/models/magma.glb",
   modelTargetHeight: 1.6,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   spriteScale: 1.8,
   name: "Magma",
   role: "Pup of the First Forge",
@@ -552,6 +555,7 @@ const glimmer = {
   portrait: "docs/portraits/glimmer.png",
   model: "docs/models/glimmer.glb",
   modelTargetHeight: 1.6,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   spriteScale: 1.8,
   name: "Glimmer",
   role: "Fox of the Prism Caves",
@@ -626,6 +630,7 @@ const mossback = {
   id: "mossback",
   model: "docs/models/mossback.glb",
   modelTargetHeight: 1.7,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   portrait: "docs/portraits/mossback.png",
   spriteScale: 2.2,
   name: "Mossback",
@@ -697,6 +702,7 @@ const whisper = {
   portrait: "docs/portraits/whisper.png",
   model: "docs/models/whisper.glb",
   modelTargetHeight: 1.7,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   spriteScale: 1.9,
   name: "Whisper",
   role: "Cat of the Unlit Hour",
@@ -779,6 +785,7 @@ const pip = {
   portrait: "docs/portraits/pip.png",
   model: "docs/models/pip.glb",
   modelTargetHeight: 1.3,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   spriteScale: 1.5,
   flying: true,
   name: "Pip",
@@ -857,6 +864,7 @@ const bubble = {
   portrait: "docs/portraits/bubble.png",
   model: "docs/models/bubble.glb",
   modelTargetHeight: 2.0,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   spriteScale: 2.2,
   name: "Bubble",
   role: "Jelly of the Drifting Trench",
@@ -933,6 +941,7 @@ const ember = {
   portrait: "docs/portraits/ember.png",
   model: "docs/models/ember.glb",
   modelTargetHeight: 1.7,
+  modelYaw: Math.PI / 2,   // GLB authored facing -X (see aurora)
   spriteScale: 1.9,
   name: "Ember",
   role: "Phoenix Still Learning to Burn",

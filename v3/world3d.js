@@ -281,49 +281,69 @@ export class World {
   // V1 PRD: dark purple mountain silhouettes form the horizon ring around
   // the play area. 14 triangle billboards at radius ~32, varied heights,
   // facing inward. Mountains read as a distant horizon rather than a fence.
-  _buildMountainRing() {
-    const tex = this._makeMountainTexture();
-    const RADIUS = 32;
-    const COUNT = 14;
-    for (let i = 0; i < COUNT; i++) {
-      const ang = (i / COUNT) * Math.PI * 2;
-      const x = Math.cos(ang) * RADIUS;
-      const z = Math.sin(ang) * RADIUS;
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
-      }));
-      sprite.center.set(0.5, 0);
-      // Varied widths/heights so the ring doesn't feel uniform.
-      const h = 7 + Math.random() * 5;
-      const w = h * (1.4 + Math.random() * 0.6);
-      sprite.scale.set(w, h, 1);
-      sprite.position.set(x, 0, z);
-      this.scene.add(sprite);
+  // Low-poly 3D peaks ring the meadow — faceted rock cones with aligned snow
+  // caps. Real geometry (not billboards) so they catch the sun + the moonlit
+  // rim and recede into the fog for honest atmospheric depth.
+  _peakMaterials() {
+    if (!this._peakRockMat) {
+      this._peakRockMat = new THREE.MeshStandardMaterial({ color: 0x707f96, roughness: 1, flatShading: true });
+      this._peakSnowMat = new THREE.MeshStandardMaterial({ color: 0xe9f1ff, roughness: 0.9, flatShading: true });
     }
+    return [this._peakRockMat, this._peakSnowMat];
   }
 
-  // A taller mountain pyramid stands behind the action with a tiny glowing
-  // peak — same V1 trick that draws the eye to the centre of the scene.
+  _buildPeak(h, baseR, seg) {
+    const [rockMat, snowMat] = this._peakMaterials();
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.ConeGeometry(baseR, h, seg, 1), rockMat);
+    body.position.y = h / 2;
+    g.add(body);
+    // Snow cap — a slightly larger cone (same facet count) overhanging the top
+    // ~42% so it sits just outside the rock face instead of z-fighting it.
+    const capH = h * 0.45, capR = baseR * 0.45;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(capR, capH, seg, 1), snowMat);
+    cap.position.y = h * 0.58 + capH / 2;
+    g.add(cap);
+    g.traverse((n) => { if (n.isMesh) { n.castShadow = false; n.receiveShadow = false; } });
+    return g;
+  }
+
+  _buildMountainRing() {
+    const RADIUS = 34;
+    const COUNT = 18;
+    const group = new THREE.Group();
+    for (let i = 0; i < COUNT; i++) {
+      const ang = (i / COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.12;
+      const r = RADIUS + (Math.random() - 0.5) * 7;
+      const h = 8 + Math.random() * 9;
+      const baseR = h * (0.5 + Math.random() * 0.22);
+      const seg = 5 + Math.floor(Math.random() * 3);     // 5–7 facets each
+      const peak = this._buildPeak(h, baseR, seg);
+      peak.position.set(Math.cos(ang) * r, -0.4, Math.sin(ang) * r);
+      peak.rotation.y = Math.random() * Math.PI * 2;
+      group.add(peak);
+    }
+    this.scene.add(group);
+    this._mountainGroup = group;
+  }
+
+  // A taller peak stands behind the action with a tiny warm glow at its tip —
+  // the same focal trick as V1, now a real faceted mountain.
   _buildCenterMountain() {
-    const tex = this._makeMountainTexture(true);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
-    }));
-    sprite.center.set(0.5, 0);
-    sprite.scale.set(28, 16, 1);
-    // Behind the egg ring (z negative = into screen from camera default).
-    sprite.position.set(0, 0, -28);
-    this.scene.add(sprite);
+    const peak = this._buildPeak(20, 13, 6);
+    peak.position.set(0, -0.6, -30);
+    peak.rotation.y = 0.3;
+    this.scene.add(peak);
     // Tiny warm glow at the peak — point light + small additive sprite.
-    const peakLight = new THREE.PointLight(0xffe28a, 0.7, 12, 2);
-    peakLight.position.set(0, 14, -28);
+    const peakLight = new THREE.PointLight(0xffe28a, 0.7, 14, 2);
+    peakLight.position.set(0, 19, -30);
     this.scene.add(peakLight);
     const peakSprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: this._makeDiscTexture(128, ["#fffbcc", "#ffe98a", "rgba(255,184,74,0)"]),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
-    peakSprite.scale.setScalar(1.5);
-    peakSprite.position.set(0, 14, -28);
+    peakSprite.scale.setScalar(2.0);
+    peakSprite.position.set(0, 19, -30);
     this.scene.add(peakSprite);
   }
 
