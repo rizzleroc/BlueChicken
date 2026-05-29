@@ -2373,9 +2373,7 @@ export class World {
 
     // ---- LOOK AT YOU ------------------------------------------------------
     // When visiting (idle at the visit spot), continuously aim her facing
-    // at the camera so she actually meets your eye. The wander head-drift
-    // is suppressed for the visiting mode (handled in _tickBlue), so this
-    // is the authoritative facing.
+    // at the camera so she actually meets your eye.
     if (mode === "visiting") {
       const dx = this.camera.position.x - m.position.x;
       const dz = this.camera.position.z - m.position.z;
