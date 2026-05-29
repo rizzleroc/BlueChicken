@@ -80,9 +80,10 @@ const bluechicken = {
   portrait: "docs/portraits/bluechicken.png",
   model: "docs/models/bluechicken.glb",
   modelTargetHeight: 1.8,
-  // Tripo's default orientation puts Blue's face on -X (verified via 4-side
-  // orientation probe). Spin her 180° so face → +X, matching procedural
-  // mesh convention and putting the face widget on the actual face.
+  // Determined empirically via a yaw sweep (8 angles at π/4 increments):
+  // applying π to the GLB at load time orients her so her face direction
+  // aligns with the procedural convention (+X local), which is where the
+  // face widget is parented. Without this, her face is on her side or back.
   modelYaw: Math.PI,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
