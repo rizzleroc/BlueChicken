@@ -6,6 +6,10 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { CHARACTERS } from "./characters3d.js";
 import { World } from "./world3d.js";
 import { audio } from "./audio.js";
@@ -48,10 +52,28 @@ controls.minDistance = 4;
 controls.maxDistance = 50;
 controls.update();
 
+// ---- Post-processing: subtle bloom -----------------------------------------
+// EffectComposer renders the scene into an HDR (HalfFloat) target, UnrealBloom
+// blooms only the bright glows (high threshold so the daytime sky/snow don't
+// wash out), and OutputPass applies the renderer's ACES tone map + sRGB at the
+// end — so the existing colour grade is preserved, just with bloom on top.
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.5,   // strength — subtle
+  0.5,   // radius — soft spread
+  0.9,   // threshold — only genuinely bright emissive/additive pixels bloom
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+window.__bloom = bloomPass; // live-tunable during visual checks
+
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // ---- World ----------------------------------------------------------------
@@ -938,7 +960,7 @@ function frame(now) {
   updateJoyPill();
   updateCareHUD();
   if (!solisRevealed && world.actors.length >= PUBLIC_CHARS.length) checkSolisGate();
-  renderer.render(scene, camera);
+  composer.render();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

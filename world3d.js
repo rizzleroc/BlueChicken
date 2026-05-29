@@ -28,28 +28,30 @@ export class World {
     // Sky background colors per time-of-day. The sun light direction tracks t.
     // Modern cute palette — bright pastel midday, cream dawn, warm dusk,
     // deep but starlit night. Day reads as a friendly Teletubby/Sims meadow.
+    // Dusk is tuned as a warm "golden hour" — amber sun, honeyed haze, peach
+    // sky — rather than a cool pink, so low light reads cinematic and cozy.
     this.skyColors = {
       dawn:  new THREE.Color(0xffd4c0),
       day:   new THREE.Color(0xa6d8ff),
-      dusk:  new THREE.Color(0xffb3c1),
+      dusk:  new THREE.Color(0xffb892),
       night: new THREE.Color(0x1a2050),
     };
     this.fogColors = {
       dawn:  new THREE.Color(0xfde0d0),
       day:   new THREE.Color(0xe2f0ff),
-      dusk:  new THREE.Color(0xffd0d4),
+      dusk:  new THREE.Color(0xffcf9e),
       night: new THREE.Color(0x1a234a),
     };
     this.ambientColors = {
       dawn:  new THREE.Color(0xffe4d0),
       day:   new THREE.Color(0xfff8f0),
-      dusk:  new THREE.Color(0xffd0c0),
+      dusk:  new THREE.Color(0xffd2a4),
       night: new THREE.Color(0x7898c4),
     };
     this.sunColors = {
       dawn:  new THREE.Color(0xffe6c0),
       day:   new THREE.Color(0xfffae0),
-      dusk:  new THREE.Color(0xffbd80),
+      dusk:  new THREE.Color(0xffa24e),
       night: new THREE.Color(0xc8d4ff),
     };
 
