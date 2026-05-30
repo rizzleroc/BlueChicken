@@ -97,12 +97,18 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
   a soft trampled centre clearing, retained fine grass/flower detail, and edge
   darkening so the rim sinks into the field. Reads as an organic painted meadow.
   Verified valley + care views, functional/soak/face — all green, zero errors.
-- **Blue care-view facing (90° profile)** — Blue faced the player in profile
-  (beak to the left) in care view. Root cause: her `modelYaw` was `π` while the
-  whole rest of the cast — identically authored Tripo GLBs (face on −X) — uses
-  `π/2`. The `π` left her beak 90° off (profile in care, and 90° off her travel
-  direction in the valley). Set Blue's `modelYaw` to `π/2` to match the cast.
-  Verified: care view now faces the player head-on; face-orientation + functional
-  audits pass, zero errors. NOTE: the face-orientation guard checks the *heading
-  convention* axis, so it did not catch this beak-vs-convention mismatch — worth
-  hardening later to assert against the actual model front.
+- **Blue care-view facing** — Blue showed a profile/back instead of facing the
+  player in care view. Root cause: her GLB is authored facing local **+X** (a
+  different raw orientation than the prize set's −X), so the engine's front=+Z
+  convention needs a **−90° (3π/2)** corrective `modelYaw`, not the `π` she had.
+  Pinning the exact value took two wrong tries — `π/2` (left her **backwards**)
+  and a transient screenshot that misled me — so I rendered all four 90° yaws in
+  the *settled* care view: `0`→+X, `π/2`→away, `π`→left, **`3π/2`→faces player**.
+  At 3π/2 her world-front equals `(cos h, sin h)` for every heading, so she also
+  leads with her beak in the valley. Set `modelYaw: 3π/2`. Verified: settled care
+  faces the player; face-orientation (now front-aware) + functional both pass,
+  zero errors.
+  - Also **hardened the face-orientation guard**: it previously only tested raw
+    axes −X/−Z, so for Blue (+X) it mistook her *tail* for her front and passed
+    only when her beak pointed backward. It now checks Blue's +X front explicitly
+    (0° off heading), making it a real guard against this exact regression.

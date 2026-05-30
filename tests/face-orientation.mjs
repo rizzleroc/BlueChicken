@@ -8,9 +8,12 @@
 //
 // This test spawns the cast, lets them wander FREELY (nothing forced), then
 // reads each actor's true world facing straight off its live matrixWorld and
-// compares it to the actor's heading. A model is authored facing either local
-// -X or local -Z; whichever candidate aligns with heading (~0°) is its real
-// front. Any actor whose best alignment is off by >TOL fails.
+// compares it to the actor's heading. Ground truth: the prize GLBs are
+// authored facing local -X (whichever of -X/-Z aligns with heading is taken
+// as the front). Blue's GLB is the exception — authored facing local +X — so
+// her front axis is checked explicitly; checking the -X/-Z candidates instead
+// recognises her TAIL as "front" and passes only when her beak points
+// backward (the modelYaw=π/2 regression). Any actor off by >TOL fails.
 //
 // Exits 0 only if every actor faces its movement direction.
 import { chromium } from "playwright";
@@ -58,6 +61,7 @@ const sample = () => page.evaluate(() => {
       id: a.id, heading: a.heading,
       faceX: Math.atan2(-e[2], -e[0]),   // local -X pushed to world
       faceZ: Math.atan2(-e[10], -e[8]),  // local -Z pushed to world
+      faceXpos: Math.atan2(e[2], e[0]),  // local +X pushed to world (Blue's front)
     };
   });
 });
@@ -72,10 +76,17 @@ const norm = (d) => { while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI)
 let failed = false;
 console.log("id".padEnd(12), "front", "face−heading", "verdict");
 for (const o of rows) {
-  const dx = Math.abs(deg(norm(o.faceX - o.heading)));
-  const dz = Math.abs(deg(norm(o.faceZ - o.heading)));
-  const off = Math.min(dx, dz);
-  const front = dx <= dz ? "-X" : "-Z";
+  let off, front;
+  if (o.id === "bluechicken") {
+    // Blue's GLB is authored facing local +X — check that axis explicitly.
+    off = Math.abs(deg(norm(o.faceXpos - o.heading)));
+    front = "+X";
+  } else {
+    const dx = Math.abs(deg(norm(o.faceX - o.heading)));
+    const dz = Math.abs(deg(norm(o.faceZ - o.heading)));
+    off = Math.min(dx, dz);
+    front = dx <= dz ? "-X" : "-Z";
+  }
   const ok = off <= TOL;
   if (!ok) failed = true;
   console.log(o.id.padEnd(12), front.padStart(3), String(off).padStart(8) + "°",

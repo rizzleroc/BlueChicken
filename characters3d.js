@@ -80,11 +80,14 @@ const bluechicken = {
   portrait: "docs/portraits/bluechicken.png",
   model: "docs/models/bluechicken.glb",
   modelTargetHeight: 1.8,
-  // Tripo authored Blue's face on -X, same as the prize GLBs — so she needs
-  // the same +90° corrective yaw they use, not 180°. (The earlier π left her
-  // beak 90° off: facing the camera in profile in care view, and 90° off her
-  // travel direction in the valley.)
-  modelYaw: Math.PI / 2,
+  // Blue's GLB is authored with her face on +X (a different raw orientation
+  // than the prize set, despite the shared pipeline), so the engine's
+  // front=+Z convention needs a -90° corrective yaw. Verified empirically by
+  // rendering all four 90° yaws in the settled care view: 0→+X, π/2→away,
+  // π→left (the two earlier wrong values), 3π/2→faces the player. At 3π/2 her
+  // world-front also equals (cos h, sin h) for every heading, so she leads
+  // with her beak when walking the valley too.
+  modelYaw: 3 * Math.PI / 2,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
   // bump (= 4.8) made her tower over the care-view camera frame. 1.8 puts
