@@ -134,3 +134,9 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
   bouncing in place when not walking. Verified all grounded creatures fire idle
   hops while still (hopAmt≈0, arc reaches 1.0); face + functional pass, zero
   errors.
+- **Spontaneous idle hops** — a creature standing at its goal was static (breath
+  only). Added staggered one-shot idle hops (`_idleHopT`/`_idleHopAt`, a 0→1→0
+  arc every ~2.6–7s per actor) with their own squash-stretch, so the cast keeps
+  bouncing in place when not walking. Verified all grounded creatures fire idle
+  hops while still (hopAmt≈0, arc reaches 1.0); face + functional pass, zero
+  errors.
