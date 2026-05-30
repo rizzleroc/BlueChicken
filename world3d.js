@@ -2527,7 +2527,18 @@ export class World {
     } else if (def.floating) {
       m.position.y = (isSprite ? 0.8 : 1.5) + Math.sin(performance.now() * 0.0014 + actor.born * 0.0001) * 0.2;
     } else {
-      m.position.y = (isSprite ? 0.0 : 0.6) + Math.abs(Math.sin(performance.now() * 0.005 + actor.born * 0.0002)) * 0.08;
+      // Grounded locomotion: a springy hop while moving that eases into a
+      // gentle breath-bob when idle. The hop cadence scales a little with
+      // speed so a dashing magma bounces faster than an ambling mossback.
+      const moving = speed > 0.3;
+      const hopsPerSec = 2.2 + Math.min(speed, 8) * 0.12;
+      actor._hopPhase = (actor._hopPhase || 0) + (moving ? hopsPerSec * Math.PI * dt / 1000 : 0);
+      actor._hopAmt = (actor._hopAmt || 0) + (((moving ? 1 : 0) - (actor._hopAmt || 0)) * Math.min(1, dt / 120));
+      actor._bounce = Math.abs(Math.sin(actor._hopPhase)); // 0 at contact, 1 at apex
+      const hopH = isSprite ? 0.22 : 0.34;
+      const idleBob = Math.abs(Math.sin(performance.now() * 0.005 + actor.born * 0.0002)) * 0.08;
+      m.position.y = (isSprite ? 0.0 : 0.6) + actor._hopAmt * actor._bounce * hopH
+                   + (1 - actor._hopAmt) * idleBob;
     }
 
     // Sprites always face the camera; only procedural/GLB meshes need a
@@ -2540,9 +2551,13 @@ export class World {
     // (pre-scaled at spawn) don't shrink to unit size each frame.
     if (!def.flying && !def.floating) {
       const base = actor.baseScale || 1.0;
-      const breath = 1.0 + Math.sin(performance.now() * 0.003 + actor.idlePhase) * 0.04;
-      m.scale.y = base * breath;
-      m.scale.x = m.scale.z = base * (1.0 + (breath - 1.0) * -0.35);
+      const breath = Math.sin(performance.now() * 0.003 + actor.idlePhase) * 0.04;
+      // Squash-stretch tied to the hop: stretch tall near the apex, squash
+      // wide near contact. Fades out (via _hopAmt) when standing still, where
+      // only the gentle breath remains.
+      const stretch = ((actor._bounce || 0) - 0.5) * 0.20 * (actor._hopAmt || 0);
+      m.scale.y = base * (1.0 + breath + stretch);
+      m.scale.x = m.scale.z = base * (1.0 - breath * 0.35 - stretch * 0.6);
     }
 
     // Sims-style plumbob: bob + spin slowly, color-map to mood/joy. Position

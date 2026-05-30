@@ -120,3 +120,11 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
   Spread 8 wider-than-tall clouds in the band just above the mountain ridge so
   they sit in the visible sky from the valley camera. Verified day/dusk/night
   valley + care framing; face-orientation + functional pass, zero errors.
+- **Springy hop locomotion** — grounded creatures slid along the ground (only a
+  tiny constant breath-bob). Added a speed-aware hop in `_tickActor`: a bounce
+  (height ~0.34) whose cadence rises slightly with speed, eased in/out via
+  `_hopAmt` so starts/stops aren't jarring, plus squash-stretch tied to the hop
+  (tall at the apex, wide at contact) that fades to the gentle idle breath when
+  standing still. Universal to all 8 prize creatures. Verified numerically (all
+  grounded actors bounce 0.62→0.95 while moving, settle when idle) and via
+  face-orientation + functional, zero errors.
