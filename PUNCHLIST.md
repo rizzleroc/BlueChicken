@@ -91,3 +91,9 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
     (and bloom turns them to sparkle).
   - Verified day/dusk/night render, functional, soak, mobile, and the facing
     regression — all green, zero errors.
+- **Painterly ground** — the meadow texture was a smooth radial gradient that
+  read as a flat green bullseye once mapped across the 56-unit disc. Rewrote
+  `_makePaintedGroundTexture` with large-scale tonal mottling (varied greens),
+  a soft trampled centre clearing, retained fine grass/flower detail, and edge
+  darkening so the rim sinks into the field. Reads as an organic painted meadow.
+  Verified valley + care views, functional/soak/face — all green, zero errors.
