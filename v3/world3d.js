@@ -1114,63 +1114,87 @@ export class World {
     const c = document.createElement("canvas");
     c.width = c.height = size;
     const ctx = c.getContext("2d");
-    // Base wash — bright pastel green, slightly lighter in the centre.
-    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.6);
-    grad.addColorStop(0, "#c8eea0");
-    grad.addColorStop(1, "#8ec96b");
-    ctx.fillStyle = grad;
+    const R = (a) => Math.random() * a;
+    const soft = (x, y, r, col, a) => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, col.replace("A", a));
+      g.addColorStop(1, col.replace("A", "0"));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    };
+    // Base wash — a calm mid pastel green with only a *gentle* centre lift, so
+    // the pen reads as a soft hill rather than a hard spotlight bullseye.
+    ctx.fillStyle = "#93c869";
     ctx.fillRect(0, 0, size, size);
-    // Soft cream "dirt" patches — wide, low-opacity blots so the meadow has
-    // visual variety without going muddy.
-    ctx.globalAlpha = 0.18;
-    for (let i = 0; i < 70; i++) {
-      ctx.fillStyle = Math.random() < 0.5 ? "#f7eccd" : "#e8d8a8";
-      const x = Math.random() * size, y = Math.random() * size;
-      const r = 18 + Math.random() * 36;
+    const lift = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.62);
+    lift.addColorStop(0, "rgba(206,236,160,0.45)");
+    lift.addColorStop(1, "rgba(120,180,92,0)");
+    ctx.fillStyle = lift; ctx.fillRect(0, 0, size, size);
+    // Large-scale tonal mottling — big soft blobs of varied greens. These are
+    // the features that survive being mapped once across the whole disc, so the
+    // meadow reads as an organic painted field instead of a flat fill.
+    const greens = ["rgba(127,184,90,A)", "rgba(182,224,138,A)", "rgba(132,192,122,A)",
+                    "rgba(160,206,104,A)", "rgba(110,168,82,A)"];
+    for (let i = 0; i < 46; i++) {
+      soft(R(size), R(size), 80 + R(190),
+           greens[(Math.random() * greens.length) | 0], (0.18 + R(0.22)).toFixed(2));
+    }
+    // Worn earth — a soft trampled clearing toward the centre where the cast
+    // gathers, plus a scatter of bare patches. Large enough to read at range.
+    for (let i = 0; i < 8; i++) {
+      const ang = R(Math.PI * 2), rad = R(size * 0.22);
+      soft(size / 2 + Math.cos(ang) * rad, size / 2 + Math.sin(ang) * rad,
+           70 + R(90), "rgba(214,196,150,A)", (0.10 + R(0.12)).toFixed(2));
+    }
+    ctx.globalAlpha = 0.16;
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? "#f1e3c0" : "#e2d09c";
+      const x = R(size), y = R(size), r = 14 + R(30);
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
-    // Bright grass tufts — pairs of thin upward strokes in fresh greens.
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.4;
+    // Fine grass strokes — close-up texture (read when the camera dips low).
+    ctx.globalAlpha = 0.5; ctx.lineWidth = 1.4;
     const grassColors = ["#6fc04a", "#8cd66a", "#4fa83a", "#a0e07a", "#5fb840"];
-    for (let i = 0; i < 520; i++) {
-      ctx.strokeStyle = grassColors[Math.floor(Math.random() * grassColors.length)];
-      const bx = Math.random() * size, by = Math.random() * size;
-      const h = 5 + Math.random() * 10;
+    for (let i = 0; i < 620; i++) {
+      ctx.strokeStyle = grassColors[(Math.random() * grassColors.length) | 0];
+      const bx = R(size), by = R(size), h = 5 + R(11);
       ctx.beginPath();
       ctx.moveTo(bx, by); ctx.lineTo(bx - 1, by - h);
       ctx.moveTo(bx, by); ctx.lineTo(bx + 1, by - h);
       ctx.stroke();
     }
-    // Soft wildflowers — sparse, gentle pastels so the meadow reads as a
-    // painted field rather than scattered confetti. Fewer, fainter, in small
-    // clustered patches so there are quiet stretches of plain grass too.
-    const flowers = ["#f3a9c8", "#f6dd86", "#aecbf0", "#f1b890", "#c9b6ea"];
-    const clusters = 18;
-    for (let cI = 0; cI < clusters; cI++) {
-      const ccx = Math.random() * size, ccy = Math.random() * size;
-      const color = flowers[Math.floor(Math.random() * flowers.length)];
-      const n = 4 + Math.floor(Math.random() * 5);
+    // Wildflower clusters — cohesive pastels in small patches; a few larger
+    // blooms so colour reads at distance, with quiet stretches between them.
+    const flowers = ["#f3a9c8", "#f6dd86", "#aecbf0", "#f1b890", "#c9b6ea", "#ffffff"];
+    for (let cI = 0; cI < 24; cI++) {
+      const ccx = R(size), ccy = R(size);
+      const color = flowers[(Math.random() * flowers.length) | 0];
+      const n = 5 + (R(6) | 0);
       for (let i = 0; i < n; i++) {
-        ctx.globalAlpha = 0.4 + Math.random() * 0.25;
+        ctx.globalAlpha = 0.42 + R(0.28);
         ctx.fillStyle = color;
-        const cx = ccx + (Math.random() - 0.5) * 70;
-        const cy = ccy + (Math.random() - 0.5) * 70;
-        const r = 1.4 + Math.random() * 1.6;
+        const cx = ccx + (Math.random() - 0.5) * 84, cy = ccy + (Math.random() - 0.5) * 84;
+        const r = 1.6 + R(1.8);
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        for (let p = 0; p < 4; p++) {
-          const a = (p / 4) * Math.PI * 2 + 0.6;
+        for (let p = 0; p < 5; p++) {
+          const a = (p / 5) * Math.PI * 2 + 0.6;
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.55, 0, Math.PI * 2);
+          ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.5, 0, Math.PI * 2);
           ctx.fill();
         }
       }
     }
+    // Soft edge darkening so the disc rim sinks into the meadow/fog instead of
+    // ending on a bright ring (the inscribed circle's edge sits at UV r≈0.5).
     ctx.globalAlpha = 1;
+    const edge = ctx.createRadialGradient(size / 2, size / 2, size * 0.42, size / 2, size / 2, size * 0.5);
+    edge.addColorStop(0, "rgba(90,140,70,0)");
+    edge.addColorStop(1, "rgba(74,116,58,0.5)");
+    ctx.fillStyle = edge; ctx.fillRect(0, 0, size, size);
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = 8;
     return tex;
   }
 
