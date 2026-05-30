@@ -97,3 +97,12 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
   a soft trampled centre clearing, retained fine grass/flower detail, and edge
   darkening so the rim sinks into the field. Reads as an organic painted meadow.
   Verified valley + care views, functional/soak/face — all green, zero errors.
+- **Blue care-view facing (90° profile)** — Blue faced the player in profile
+  (beak to the left) in care view. Root cause: her `modelYaw` was `π` while the
+  whole rest of the cast — identically authored Tripo GLBs (face on −X) — uses
+  `π/2`. The `π` left her beak 90° off (profile in care, and 90° off her travel
+  direction in the valley). Set Blue's `modelYaw` to `π/2` to match the cast.
+  Verified: care view now faces the player head-on; face-orientation + functional
+  audits pass, zero errors. NOTE: the face-orientation guard checks the *heading
+  convention* axis, so it did not catch this beak-vs-convention mismatch — worth
+  hardening later to assert against the actual model front.
