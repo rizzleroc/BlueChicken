@@ -2537,8 +2537,19 @@ export class World {
       actor._bounce = Math.abs(Math.sin(actor._hopPhase)); // 0 at contact, 1 at apex
       const hopH = isSprite ? 0.22 : 0.34;
       const idleBob = Math.abs(Math.sin(performance.now() * 0.005 + actor.born * 0.0002)) * 0.08;
+      // Spontaneous idle hops: a standing creature bounces in place now and then
+      // so the cast never freezes into statues. Staggered per actor.
+      const nowMs = performance.now();
+      if (actor._idleHopAt == null) actor._idleHopAt = nowMs + rand(1200, 5000);
+      if ((actor._idleHopT || 0) > 0) actor._idleHopT -= dt;
+      else if (!moving && actor._hopAmt < 0.1 && nowMs > actor._idleHopAt) {
+        actor._idleHopT = 430;
+        actor._idleHopAt = nowMs + rand(2600, 7000);
+      }
+      actor._idleHopV = (actor._idleHopT || 0) > 0
+        ? Math.sin((1 - actor._idleHopT / 430) * Math.PI) : 0;
       m.position.y = (isSprite ? 0.0 : 0.6) + actor._hopAmt * actor._bounce * hopH
-                   + (1 - actor._hopAmt) * idleBob;
+                   + (1 - actor._hopAmt) * (idleBob + actor._idleHopV * (isSprite ? 0.16 : 0.22));
     }
 
     // Sprites always face the camera; only procedural/GLB meshes need a
@@ -2553,9 +2564,10 @@ export class World {
       const base = actor.baseScale || 1.0;
       const breath = Math.sin(performance.now() * 0.003 + actor.idlePhase) * 0.04;
       // Squash-stretch tied to the hop: stretch tall near the apex, squash
-      // wide near contact. Fades out (via _hopAmt) when standing still, where
-      // only the gentle breath remains.
-      const stretch = ((actor._bounce || 0) - 0.5) * 0.20 * (actor._hopAmt || 0);
+      // wide near contact. The idle-hop term adds the same while bouncing in
+      // place; both fade to the gentle breath when fully still.
+      const stretch = ((actor._bounce || 0) - 0.5) * 0.20 * (actor._hopAmt || 0)
+                    + ((actor._idleHopV || 0) - 0.35) * 0.16 * (1 - (actor._hopAmt || 0));
       m.scale.y = base * (1.0 + breath + stretch);
       m.scale.x = m.scale.z = base * (1.0 - breath * 0.35 - stretch * 0.6);
     }
