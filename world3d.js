@@ -215,19 +215,24 @@ export class World {
     // positions so the eye finds the same shapes each session.
     const cloudTex = this._makeCloudTexture();
     this.clouds = [];
+    // Wider-than-tall (cumulus aspect), spread across the visible upper sky —
+    // several lifted high enough to sit against the bluer zenith.
     const cloudPlacements = [
-      { x: -30, y: 28, z: -38, scale: 14 },
-      { x:  35, y: 30, z: -42, scale: 18 },
-      { x: -45, y: 24, z:  30, scale: 12 },
-      { x:  40, y: 26, z:  20, scale: 16 },
-      { x:   0, y: 32, z: -55, scale: 22 },
+      { x: -34, y: 24, z: -40, w: 22, h: 13 },
+      { x:  30, y: 27, z: -46, w: 28, h: 16 },
+      { x: -50, y: 22, z:  18, w: 20, h: 12 },
+      { x:  46, y: 25, z:  16, w: 24, h: 14 },
+      { x:   4, y: 29, z: -56, w: 32, h: 18 },
+      { x: -16, y: 26, z: -28, w: 18, h: 11 },
+      { x:  22, y: 28, z: -34, w: 20, h: 12 },
+      { x: -58, y: 24, z: -10, w: 19, h: 11 },
     ];
     for (const p of cloudPlacements) {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: cloudTex, transparent: true, depthWrite: false, opacity: 0.85,
+        map: cloudTex, transparent: true, depthWrite: false, opacity: 0.92,
       }));
       sprite.position.set(p.x, p.y, p.z);
-      sprite.scale.setScalar(p.scale);
+      sprite.scale.set(p.w, p.h, 1);
       sprite.userData.baseX = p.x;
       sprite.userData.drift = rand(0.02, 0.06);
       this.scene.add(sprite);
@@ -250,31 +255,32 @@ export class World {
     return tex;
   }
 
-  // Bright pillowy clouds — cream-white core blending into a soft baby-pink
-  // edge. Reads as the kind of cloud a Teletubby would skip across.
+  // Stylized flat-bottomed cumulus. A cool blue-grey shaded underside gives the
+  // cloud a readable silhouette against the pale daytime horizon haze (pure
+  // white clouds vanished into it), while the bright sunlit top reads as lit
+  // from above. Warm scene grade tints them at dusk; they read as moonlit puffs
+  // against the dark night sky.
   _makeCloudTexture() {
     const size = 512;
     const c = document.createElement("canvas");
     c.width = c.height = size;
     const ctx = c.getContext("2d");
-    const blobs = [
-      [256, 270, 90, 1.0],
-      [180, 260, 70, 0.85],
-      [330, 260, 80, 0.85],
-      [220, 230, 55, 0.7],
-      [300, 220, 60, 0.7],
-      [260, 215, 50, 0.6],
-    ];
-    for (const [x, y, r, alpha] of blobs) {
+    const puff = (x, y, r, col, a) => {
       const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0,    `rgba(255,255,255,${alpha})`);
-      g.addColorStop(0.55, `rgba(255,232,236,${alpha * 0.7})`);
-      g.addColorStop(1,    "rgba(255,220,228,0)");
+      g.addColorStop(0,   `rgba(${col},${a})`);
+      g.addColorStop(0.6, `rgba(${col},${a * 0.6})`);
+      g.addColorStop(1,   `rgba(${col},0)`);
       ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    };
+    const SHADE = "188,202,226", BODY = "246,249,255", HI = "255,255,255";
+    // Shaded underside — low, wide, flatter, so the cloud has a base to sit on.
+    puff(150, 300, 70, SHADE, 0.55); puff(256, 312, 88, SHADE, 0.60); puff(360, 300, 72, SHADE, 0.55);
+    // Main body.
+    puff(150, 272, 78, BODY, 0.95); puff(360, 272, 80, BODY, 0.95);
+    puff(212, 250, 72, BODY, 1.0);  puff(300, 248, 74, BODY, 1.0); puff(256, 262, 94, BODY, 1.0);
+    // Sunlit caps.
+    puff(232, 224, 52, HI, 0.95); puff(300, 222, 54, HI, 0.95); puff(266, 210, 46, HI, 0.9);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;

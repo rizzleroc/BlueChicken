@@ -112,3 +112,11 @@ the cast face away from travel again, run `node tests/face-orientation.mjs`
     axes −X/−Z, so for Blue (+X) it mistook her *tail* for her front and passed
     only when her beak pointed backward. It now checks Blue's +X front explicitly
     (0° off heading), making it a real guard against this exact regression.
+- **Daytime sky / clouds** — the day sky read flat and empty: the cloud sprites
+  were cream-white-pink with no shaded form, so they dissolved into the pale
+  horizon haze (`fogColors.day`). Rewrote the cloud texture as a flat-bottomed
+  cumulus — cool blue-grey shaded underside + sunlit top — so the silhouette
+  reads against pale sky (and still looks warm at dusk / moonlit at night).
+  Spread 8 wider-than-tall clouds in the band just above the mountain ridge so
+  they sit in the visible sky from the valley camera. Verified day/dusk/night
+  valley + care framing; face-orientation + functional pass, zero errors.
