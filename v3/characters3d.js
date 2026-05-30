@@ -80,10 +80,11 @@ const bluechicken = {
   portrait: "docs/portraits/bluechicken.png",
   model: "docs/models/bluechicken.glb",
   modelTargetHeight: 1.8,
-  // Tripo's default orientation puts Blue's face on -X (verified via 4-side
-  // orientation probe). Spin her 180° so face → +X, matching procedural
-  // mesh convention and putting the face widget on the actual face.
-  modelYaw: Math.PI,
+  // Tripo authored Blue's face on -X, same as the prize GLBs — so she needs
+  // the same +90° corrective yaw they use, not 180°. (The earlier π left her
+  // beak 90° off: facing the camera in profile in care view, and 90° off her
+  // travel direction in the valley.)
+  modelYaw: Math.PI / 2,
   spriteScale: 2.4,
   // The procedural buildBody() is ~1 unit tall; the default 2× spriteScale
   // bump (= 4.8) made her tower over the care-view camera frame. 1.8 puts
