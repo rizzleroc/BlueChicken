@@ -28,28 +28,30 @@ export class World {
     // Sky background colors per time-of-day. The sun light direction tracks t.
     // Modern cute palette — bright pastel midday, cream dawn, warm dusk,
     // deep but starlit night. Day reads as a friendly Teletubby/Sims meadow.
+    // Dusk is tuned as a warm "golden hour" — amber sun, honeyed haze, peach
+    // sky — rather than a cool pink, so low light reads cinematic and cozy.
     this.skyColors = {
       dawn:  new THREE.Color(0xffd4c0),
       day:   new THREE.Color(0xa6d8ff),
-      dusk:  new THREE.Color(0xffb3c1),
+      dusk:  new THREE.Color(0xffb892),
       night: new THREE.Color(0x1a2050),
     };
     this.fogColors = {
       dawn:  new THREE.Color(0xfde0d0),
       day:   new THREE.Color(0xe2f0ff),
-      dusk:  new THREE.Color(0xffd0d4),
+      dusk:  new THREE.Color(0xffcf9e),
       night: new THREE.Color(0x1a234a),
     };
     this.ambientColors = {
       dawn:  new THREE.Color(0xffe4d0),
       day:   new THREE.Color(0xfff8f0),
-      dusk:  new THREE.Color(0xffd0c0),
+      dusk:  new THREE.Color(0xffd2a4),
       night: new THREE.Color(0x7898c4),
     };
     this.sunColors = {
       dawn:  new THREE.Color(0xffe6c0),
       day:   new THREE.Color(0xfffae0),
-      dusk:  new THREE.Color(0xffbd80),
+      dusk:  new THREE.Color(0xffa24e),
       night: new THREE.Color(0xc8d4ff),
     };
 
@@ -281,49 +283,69 @@ export class World {
   // V1 PRD: dark purple mountain silhouettes form the horizon ring around
   // the play area. 14 triangle billboards at radius ~32, varied heights,
   // facing inward. Mountains read as a distant horizon rather than a fence.
-  _buildMountainRing() {
-    const tex = this._makeMountainTexture();
-    const RADIUS = 32;
-    const COUNT = 14;
-    for (let i = 0; i < COUNT; i++) {
-      const ang = (i / COUNT) * Math.PI * 2;
-      const x = Math.cos(ang) * RADIUS;
-      const z = Math.sin(ang) * RADIUS;
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
-      }));
-      sprite.center.set(0.5, 0);
-      // Varied widths/heights so the ring doesn't feel uniform.
-      const h = 7 + Math.random() * 5;
-      const w = h * (1.4 + Math.random() * 0.6);
-      sprite.scale.set(w, h, 1);
-      sprite.position.set(x, 0, z);
-      this.scene.add(sprite);
+  // Low-poly 3D peaks ring the meadow — faceted rock cones with aligned snow
+  // caps. Real geometry (not billboards) so they catch the sun + the moonlit
+  // rim and recede into the fog for honest atmospheric depth.
+  _peakMaterials() {
+    if (!this._peakRockMat) {
+      this._peakRockMat = new THREE.MeshStandardMaterial({ color: 0x707f96, roughness: 1, flatShading: true });
+      this._peakSnowMat = new THREE.MeshStandardMaterial({ color: 0xe9f1ff, roughness: 0.9, flatShading: true });
     }
+    return [this._peakRockMat, this._peakSnowMat];
   }
 
-  // A taller mountain pyramid stands behind the action with a tiny glowing
-  // peak — same V1 trick that draws the eye to the centre of the scene.
+  _buildPeak(h, baseR, seg) {
+    const [rockMat, snowMat] = this._peakMaterials();
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.ConeGeometry(baseR, h, seg, 1), rockMat);
+    body.position.y = h / 2;
+    g.add(body);
+    // Snow cap — a slightly larger cone (same facet count) overhanging the top
+    // ~42% so it sits just outside the rock face instead of z-fighting it.
+    const capH = h * 0.45, capR = baseR * 0.45;
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(capR, capH, seg, 1), snowMat);
+    cap.position.y = h * 0.58 + capH / 2;
+    g.add(cap);
+    g.traverse((n) => { if (n.isMesh) { n.castShadow = false; n.receiveShadow = false; } });
+    return g;
+  }
+
+  _buildMountainRing() {
+    const RADIUS = 34;
+    const COUNT = 18;
+    const group = new THREE.Group();
+    for (let i = 0; i < COUNT; i++) {
+      const ang = (i / COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.12;
+      const r = RADIUS + (Math.random() - 0.5) * 7;
+      const h = 8 + Math.random() * 9;
+      const baseR = h * (0.5 + Math.random() * 0.22);
+      const seg = 5 + Math.floor(Math.random() * 3);     // 5–7 facets each
+      const peak = this._buildPeak(h, baseR, seg);
+      peak.position.set(Math.cos(ang) * r, -0.4, Math.sin(ang) * r);
+      peak.rotation.y = Math.random() * Math.PI * 2;
+      group.add(peak);
+    }
+    this.scene.add(group);
+    this._mountainGroup = group;
+  }
+
+  // A taller peak stands behind the action with a tiny warm glow at its tip —
+  // the same focal trick as V1, now a real faceted mountain.
   _buildCenterMountain() {
-    const tex = this._makeMountainTexture(true);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: tex, transparent: true, depthWrite: false, alphaTest: 0.05,
-    }));
-    sprite.center.set(0.5, 0);
-    sprite.scale.set(28, 16, 1);
-    // Behind the egg ring (z negative = into screen from camera default).
-    sprite.position.set(0, 0, -28);
-    this.scene.add(sprite);
+    const peak = this._buildPeak(20, 13, 6);
+    peak.position.set(0, -0.6, -30);
+    peak.rotation.y = 0.3;
+    this.scene.add(peak);
     // Tiny warm glow at the peak — point light + small additive sprite.
-    const peakLight = new THREE.PointLight(0xffe28a, 0.7, 12, 2);
-    peakLight.position.set(0, 14, -28);
+    const peakLight = new THREE.PointLight(0xffe28a, 0.7, 14, 2);
+    peakLight.position.set(0, 19, -30);
     this.scene.add(peakLight);
     const peakSprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: this._makeDiscTexture(128, ["#fffbcc", "#ffe98a", "rgba(255,184,74,0)"]),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     }));
-    peakSprite.scale.setScalar(1.5);
-    peakSprite.position.set(0, 14, -28);
+    peakSprite.scale.setScalar(2.0);
+    peakSprite.position.set(0, 19, -30);
     this.scene.add(peakSprite);
   }
 
@@ -343,28 +365,54 @@ export class World {
 
     // --- The coop: a small barn behind Blue (negative Z) ---
     const coop = new THREE.Group();
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0xc89b6a, roughness: 0.8 });
+
+    // Walls.
     const body = new THREE.Mesh(new THREE.BoxGeometry(5.5, 3.2, 3.6), plankMat);
     body.position.y = 1.6;
     body.castShadow = true; body.receiveShadow = true;
     coop.add(body);
-    // Pitched roof (two slanted boxes meeting at a ridge).
-    const roofL = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 3.9), roofMat);
-    roofL.position.set(-1.0, 3.6, 0);
-    roofL.rotation.z = Math.PI * 0.18;
-    coop.add(roofL);
-    const roofR = roofL.clone();
-    roofR.position.x = 1.0;
-    roofR.rotation.z = -Math.PI * 0.18;
-    coop.add(roofR);
-    // Door (dark plank rectangle on the front face).
-    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.08), darkPlank);
-    door.position.set(0, 0.9, 1.82);
+
+    // Gable roof — ONE extruded triangular prism: solid sloped faces AND solid
+    // gable ends, overhanging the walls (eaves), so it reads as a real roof
+    // instead of two floating planks with open triangular gaps.
+    const peakH = 2.0, halfW = 3.05, depth = 4.1;
+    const roofShape = new THREE.Shape();
+    roofShape.moveTo(-halfW, 0); roofShape.lineTo(halfW, 0); roofShape.lineTo(0, peakH); roofShape.closePath();
+    const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth, bevelEnabled: false });
+    roofGeo.translate(0, 0, -depth / 2);
+    const roof = new THREE.Mesh(roofGeo, roofMat);
+    roof.position.y = 3.2;
+    roof.castShadow = true; roof.receiveShadow = true;
+    coop.add(roof);
+    // Ridge cap along the peak.
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, depth + 0.1), darkPlank);
+    ridge.position.set(0, 3.2 + peakH, 0);
+    coop.add(ridge);
+
+    // Vertical corner posts wrapping each corner (proud of both wall faces).
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.26, 3.22, 0.26), trimMat);
+      post.position.set(sx * 2.75, 1.6, sz * 1.8);
+      post.castShadow = true;
+      coop.add(post);
+    }
+
+    // Front face (z = +1.8): framed door + round window with trim.
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.05, 0.06), trimMat);
+    frame.position.set(0, 1.0, 1.81);
+    coop.add(frame);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.1), darkPlank);
+    door.position.set(0, 0.9, 1.85);
     coop.add(door);
+    const winFrame = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.92, 0.06), trimMat);
+    winFrame.position.set(0, 2.4, 1.81);
+    coop.add(winFrame);
     // Round window above the door — bright yellow disc (interior lamp glow).
     const windowGeom = new THREE.CircleGeometry(0.36, 24);
     const windowMat = new THREE.MeshBasicMaterial({ color: 0xffd57f, side: THREE.DoubleSide, transparent: true, opacity: 0.95 });
     const win = new THREE.Mesh(windowGeom, windowMat);
-    win.position.set(0, 2.4, 1.83);
+    win.position.set(0, 2.4, 1.85);
     coop.add(win);
     // Soft point light inside the window, glow at the door.
     const lamp = new THREE.PointLight(0xffd29a, 0.9, 10, 1.6);
@@ -375,13 +423,33 @@ export class World {
     barn.add(coop);
 
     // --- Hay bales, scattered to either side of Blue ---
+    const twineMat = new THREE.MeshStandardMaterial({ color: 0xa9762a, roughness: 1 });
+    const baleEndMat = new THREE.MeshStandardMaterial({ color: 0xc6912f, roughness: 1 });
+    const R = 0.6, L = 1.1;
     const bale = (x, z, rot) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.1, 16), hayMat);
-      m.rotation.z = Math.PI / 2;
-      m.rotation.y = rot;
-      m.position.set(x, 0.6, z);
-      m.castShadow = true; m.receiveShadow = true;
-      return m;
+      const g = new THREE.Group();
+      // The roll lies on its side (axis along local X).
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(R, R, L, 18), hayMat);
+      roll.rotation.z = Math.PI / 2;
+      g.add(roll);
+      // Twine bands wrapping the roll at three points along its length.
+      for (const ox of [-0.34, 0, 0.34]) {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.015, R + 0.015, 0.07, 18), twineMat);
+        band.rotation.z = Math.PI / 2;
+        band.position.x = ox;
+        g.add(band);
+      }
+      // Rolled-straw end caps — a lighter disc proud of each flat end.
+      for (const s of [-1, 1]) {
+        const cap = new THREE.Mesh(new THREE.CircleGeometry(R - 0.03, 18), baleEndMat);
+        cap.rotation.y = s * Math.PI / 2;
+        cap.position.x = s * (L / 2 + 0.002);
+        g.add(cap);
+      }
+      g.rotation.y = rot;
+      g.position.set(x, R, z);
+      g.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
+      return g;
     };
     barn.add(bale(-3.4, -2.6, 0.2));
     barn.add(bale(-4.2, -1.4, -0.4));
@@ -989,18 +1057,52 @@ export class World {
 
     const pondTex = this._makePaintedPondTexture();
     pondTex.wrapS = pondTex.wrapT = THREE.RepeatWrapping;
+    this._pondR = 3.2;
+    const pondGeo = this._buildPondSurface(this._pondR, 9, 40);
     const pond = new THREE.Mesh(
-      new THREE.CircleGeometry(3.2, 36),
+      pondGeo,
       new THREE.MeshStandardMaterial({
-        map: pondTex, roughness: 0.12, metalness: 0.35,
-        transparent: true, opacity: 0.92,
+        map: pondTex, roughness: 0.1, metalness: 0.4,
+        transparent: true, opacity: 0.92, side: THREE.DoubleSide,
       })
     );
-    pond.rotation.x = -Math.PI / 2;
+    // Built flat in XZ with +Y up (no rotation) so tick() can ripple its
+    // vertices and the shifting normals make the surface shimmer.
     pond.position.set(pondCenter.x, 0.04, pondCenter.z);
     pond.receiveShadow = true;
     this.scene.add(pond);
     this.pond = pond;
+    this._pondGeo = pondGeo;
+  }
+
+  // A tessellated radial-grid disc (centre vertex + `rings` concentric rings of
+  // `seg` points). Real interior vertices let tick() ripple the water; UVs map
+  // the disc into the painted pond texture.
+  _buildPondSurface(R, rings, seg) {
+    const pos = [0, 0, 0], uv = [0.5, 0.5], idx = [];
+    for (let k = 1; k <= rings; k++) {
+      const rk = (R * k) / rings;
+      for (let s = 0; s < seg; s++) {
+        const a = (s / seg) * Math.PI * 2;
+        const x = Math.cos(a) * rk, z = Math.sin(a) * rk;
+        pos.push(x, 0, z);
+        uv.push(0.5 + x / (2 * R), 0.5 + z / (2 * R));
+      }
+    }
+    for (let s = 0; s < seg; s++) idx.push(0, 1 + ((s + 1) % seg), 1 + s); // centre fan
+    for (let k = 1; k < rings; k++) {
+      const a0 = 1 + (k - 1) * seg, a1 = 1 + k * seg;
+      for (let s = 0; s < seg; s++) {
+        const s1 = (s + 1) % seg;
+        idx.push(a0 + s, a0 + s1, a1 + s, a0 + s1, a1 + s1, a1 + s);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
   }
 
   // Modern cute ground: a cheerful pastel-green meadow with cream
@@ -1012,63 +1114,87 @@ export class World {
     const c = document.createElement("canvas");
     c.width = c.height = size;
     const ctx = c.getContext("2d");
-    // Base wash — bright pastel green, slightly lighter in the centre.
-    const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.6);
-    grad.addColorStop(0, "#c8eea0");
-    grad.addColorStop(1, "#8ec96b");
-    ctx.fillStyle = grad;
+    const R = (a) => Math.random() * a;
+    const soft = (x, y, r, col, a) => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, col.replace("A", a));
+      g.addColorStop(1, col.replace("A", "0"));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    };
+    // Base wash — a calm mid pastel green with only a *gentle* centre lift, so
+    // the pen reads as a soft hill rather than a hard spotlight bullseye.
+    ctx.fillStyle = "#93c869";
     ctx.fillRect(0, 0, size, size);
-    // Soft cream "dirt" patches — wide, low-opacity blots so the meadow has
-    // visual variety without going muddy.
-    ctx.globalAlpha = 0.18;
-    for (let i = 0; i < 70; i++) {
-      ctx.fillStyle = Math.random() < 0.5 ? "#f7eccd" : "#e8d8a8";
-      const x = Math.random() * size, y = Math.random() * size;
-      const r = 18 + Math.random() * 36;
+    const lift = ctx.createRadialGradient(size / 2, size / 2, size * 0.05, size / 2, size / 2, size * 0.62);
+    lift.addColorStop(0, "rgba(206,236,160,0.45)");
+    lift.addColorStop(1, "rgba(120,180,92,0)");
+    ctx.fillStyle = lift; ctx.fillRect(0, 0, size, size);
+    // Large-scale tonal mottling — big soft blobs of varied greens. These are
+    // the features that survive being mapped once across the whole disc, so the
+    // meadow reads as an organic painted field instead of a flat fill.
+    const greens = ["rgba(127,184,90,A)", "rgba(182,224,138,A)", "rgba(132,192,122,A)",
+                    "rgba(160,206,104,A)", "rgba(110,168,82,A)"];
+    for (let i = 0; i < 46; i++) {
+      soft(R(size), R(size), 80 + R(190),
+           greens[(Math.random() * greens.length) | 0], (0.18 + R(0.22)).toFixed(2));
+    }
+    // Worn earth — a soft trampled clearing toward the centre where the cast
+    // gathers, plus a scatter of bare patches. Large enough to read at range.
+    for (let i = 0; i < 8; i++) {
+      const ang = R(Math.PI * 2), rad = R(size * 0.22);
+      soft(size / 2 + Math.cos(ang) * rad, size / 2 + Math.sin(ang) * rad,
+           70 + R(90), "rgba(214,196,150,A)", (0.10 + R(0.12)).toFixed(2));
+    }
+    ctx.globalAlpha = 0.16;
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? "#f1e3c0" : "#e2d09c";
+      const x = R(size), y = R(size), r = 14 + R(30);
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     }
-    // Bright grass tufts — pairs of thin upward strokes in fresh greens.
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.4;
+    // Fine grass strokes — close-up texture (read when the camera dips low).
+    ctx.globalAlpha = 0.5; ctx.lineWidth = 1.4;
     const grassColors = ["#6fc04a", "#8cd66a", "#4fa83a", "#a0e07a", "#5fb840"];
-    for (let i = 0; i < 520; i++) {
-      ctx.strokeStyle = grassColors[Math.floor(Math.random() * grassColors.length)];
-      const bx = Math.random() * size, by = Math.random() * size;
-      const h = 5 + Math.random() * 10;
+    for (let i = 0; i < 620; i++) {
+      ctx.strokeStyle = grassColors[(Math.random() * grassColors.length) | 0];
+      const bx = R(size), by = R(size), h = 5 + R(11);
       ctx.beginPath();
       ctx.moveTo(bx, by); ctx.lineTo(bx - 1, by - h);
       ctx.moveTo(bx, by); ctx.lineTo(bx + 1, by - h);
       ctx.stroke();
     }
-    // Soft wildflowers — sparse, gentle pastels so the meadow reads as a
-    // painted field rather than scattered confetti. Fewer, fainter, in small
-    // clustered patches so there are quiet stretches of plain grass too.
-    const flowers = ["#f3a9c8", "#f6dd86", "#aecbf0", "#f1b890", "#c9b6ea"];
-    const clusters = 18;
-    for (let cI = 0; cI < clusters; cI++) {
-      const ccx = Math.random() * size, ccy = Math.random() * size;
-      const color = flowers[Math.floor(Math.random() * flowers.length)];
-      const n = 4 + Math.floor(Math.random() * 5);
+    // Wildflower clusters — cohesive pastels in small patches; a few larger
+    // blooms so colour reads at distance, with quiet stretches between them.
+    const flowers = ["#f3a9c8", "#f6dd86", "#aecbf0", "#f1b890", "#c9b6ea", "#ffffff"];
+    for (let cI = 0; cI < 24; cI++) {
+      const ccx = R(size), ccy = R(size);
+      const color = flowers[(Math.random() * flowers.length) | 0];
+      const n = 5 + (R(6) | 0);
       for (let i = 0; i < n; i++) {
-        ctx.globalAlpha = 0.4 + Math.random() * 0.25;
+        ctx.globalAlpha = 0.42 + R(0.28);
         ctx.fillStyle = color;
-        const cx = ccx + (Math.random() - 0.5) * 70;
-        const cy = ccy + (Math.random() - 0.5) * 70;
-        const r = 1.4 + Math.random() * 1.6;
+        const cx = ccx + (Math.random() - 0.5) * 84, cy = ccy + (Math.random() - 0.5) * 84;
+        const r = 1.6 + R(1.8);
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        for (let p = 0; p < 4; p++) {
-          const a = (p / 4) * Math.PI * 2 + 0.6;
+        for (let p = 0; p < 5; p++) {
+          const a = (p / 5) * Math.PI * 2 + 0.6;
           ctx.beginPath();
-          ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.55, 0, Math.PI * 2);
+          ctx.arc(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4, r * 0.5, 0, Math.PI * 2);
           ctx.fill();
         }
       }
     }
+    // Soft edge darkening so the disc rim sinks into the meadow/fog instead of
+    // ending on a bright ring (the inscribed circle's edge sits at UV r≈0.5).
     ctx.globalAlpha = 1;
+    const edge = ctx.createRadialGradient(size / 2, size / 2, size * 0.42, size / 2, size / 2, size * 0.5);
+    edge.addColorStop(0, "rgba(90,140,70,0)");
+    edge.addColorStop(1, "rgba(74,116,58,0.5)");
+    ctx.fillStyle = edge; ctx.fillRect(0, 0, size, size);
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = 8;
     return tex;
   }
 
@@ -1404,7 +1530,21 @@ export class World {
     this._dayFactor = day;   // reused by ambient life (pollen ↔ fireflies)
     this.ambient.intensity = 0.16 + day * 0.30;
     this.hemi.intensity    = 0.24 + day * 0.46;
-    if (this.rim) this.rim.intensity = 0.2 + day * 0.45;
+    // Rim/back light is the cast's separation light. Counter-intuitively it
+    // must stay UP at night — that's when the meadow goes dark and silhouettes
+    // would otherwise melt into the ground. Floor it at 0.5 (moonlit edge) and
+    // tint it cooler as the day fades so it reads as moonlight, not leftover
+    // sun. The scene still reads dark because ambient/hemi fall off; only the
+    // character/prop EDGES catch this, which is exactly the cinematic lift.
+    if (this.rim) {
+      const night = 1 - day;
+      this.rim.intensity = 0.5 + day * 0.25;            // night 0.5 → noon 0.75
+      this.rim.color.setRGB(                            // cooler toward moonlight at night
+        0.62 - night * 0.05,
+        0.77 + night * 0.02,
+        1.0,
+      );
+    }
 
     // Visible sun + moon sprites — same arc, larger radius so they sit far in
     // the sky. The moon trails 180° behind the sun so we always have one or
@@ -2262,12 +2402,29 @@ export class World {
     // Ambient life — drifting motes / fireflies.
     this._updateAmbientLife(dt, now);
 
-    // Pond shimmer — drift the water texture so the surface reads as moving
-    // water rather than a static disc.
+    // Pond shimmer — drift the water texture AND ripple the surface. Gentle
+    // cross-waves (tapered to calm at the shore so they never clip the bank)
+    // shift the vertex normals so the sky/sun glint dances across the water;
+    // the bloom pass turns those moving highlights into soft sparkle.
     if (this.pond && this.pond.material.map) {
       const off = this.pond.material.map.offset;
       off.x = Math.sin(now * 0.00012) * 0.03;
       off.y = now * 0.00003;
+      const g = this._pondGeo;
+      if (g) {
+        const p = g.attributes.position;
+        const t = now * 0.001, R = this._pondR || 3.2;
+        for (let i = 1; i < p.count; i++) {           // i=0 is the calm centre
+          const x = p.getX(i), z = p.getZ(i);
+          const fall = Math.max(0, 1 - Math.hypot(x, z) / R);
+          p.setY(i, fall * (
+            Math.sin(x * 1.7 + t * 1.3) * 0.020 +
+            Math.cos(z * 2.1 - t * 1.6) * 0.016 +
+            Math.sin((x + z) * 1.2 + t * 0.9) * 0.014));
+        }
+        p.needsUpdate = true;
+        g.computeVertexNormals();
+      }
     }
 
     // Actor wander.
