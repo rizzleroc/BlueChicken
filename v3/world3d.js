@@ -32,7 +32,7 @@ export class World {
     // sky — rather than a cool pink, so low light reads cinematic and cozy.
     this.skyColors = {
       dawn:  new THREE.Color(0xffd4c0),
-      day:   new THREE.Color(0xa6d8ff),
+      day:   new THREE.Color(0x80bdf0),
       dusk:  new THREE.Color(0xffb892),
       night: new THREE.Color(0x1a2050),
     };
